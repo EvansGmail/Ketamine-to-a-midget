@@ -13,6 +13,7 @@ namespace ConsoleApplication1
         static void Main(string[] args)
         {
             //Blocking forward progress while I wait for an Http request, because this is just a console app (so no backgrounding)
+            
             RunAsync().Wait();
 
             Console.WriteLine("Done!");
@@ -100,9 +101,12 @@ namespace ConsoleApplication1
                                         || colorCode.Equals("#F2E8B8")) //ugly (Random?)
                                     {
                                         //We've found a player TR! So grab the info out of each <td> (some may be empty!) and spill it
+                                        //This would be the time to initialize a player object, and then fill in info as it comes up in the for loop.
+
+
                                         for (var i = 1; i <= 6; i++)
                                         {
-                                            //There should be 6 TDs; for now cycle through them
+                                            //There should be exactly 6 TDs; for now cycle through them. If liquipedia changes this, it will break
                                             td_start = nextTDstart(responseString, tr_candidate);
                                             td_end = nextTDend(responseString, tr_candidate);
                                             td_length = nextTDlength(responseString, tr_candidate);
@@ -119,7 +123,6 @@ namespace ConsoleApplication1
 
                                             //move the starting point
                                             tr_candidate = td_end;
-                                        
                                         }
                                         Console.WriteLine(); //Just adding a line for space here.
                                     }
