@@ -13,14 +13,27 @@ namespace ConsoleApplication1
         static void Main(string[] args)
         {
             //Blocking forward progress while I wait for an Http request, because this is just a console app (so no backgrounding)
+            List<personObject> tlPeople = new List<personObject>();
             
-            RunAsync().Wait();
+            RunAsync(tlPeople).Wait();
+
+            foreach (personObject person in tlPeople)
+            {
+                Console.WriteLine(person.liquipediaName);
+                Console.WriteLine(person.irlName);
+                Console.WriteLine(person.teamName);
+                Console.WriteLine(person.country);
+                Console.WriteLine(person.mainRace);
+                Console.WriteLine(person.twitchName);
+                Console.WriteLine();
+                //Console.ReadKey();
+            }
 
             Console.WriteLine("Done!");
             Console.ReadKey();
         }
 
-        static async Task RunAsync()
+        static async Task RunAsync(List<personObject> tlPeople)
         {
             using (var client = new HttpClient())
             {
@@ -51,7 +64,8 @@ namespace ConsoleApplication1
                         int td_end = 0;
                         int td_length = 0;
                         string td_info;
-                    
+                        
+                        
                         try
                         {
                         
@@ -74,7 +88,9 @@ namespace ConsoleApplication1
                                 //Find the scope of the current country table
 
                                 tableStart = responseString.IndexOf("<table ", countryEnd);
-                                tableEnd = responseString.IndexOf("</table", tableStart);
+                                tableEnd = responseString.IndexOf("<h3><span class=\"mw-headline\" id=", tableStart);
+
+                                if (tableEnd == -1) tableEnd = responseString.Length; 
 
                                 c = tableStart + 6;
 
@@ -102,7 +118,7 @@ namespace ConsoleApplication1
                                     {
                                         //We've found a player TR! So grab the info out of each <td> (some may be empty!) and spill it
                                         //This would be the time to initialize a player object, and then fill in info as it comes up in the for loop.
-
+                                        personObject tempPerson = new personObject();
 
                                         for (var i = 1; i <= 6; i++)
                                         {
@@ -117,18 +133,67 @@ namespace ConsoleApplication1
                                             td_info = removeTag(td_info, "span");
                                             //Clip out all the tags
                                             td_info = InnerText(td_info, 0, td_info.Length).Trim();
+                                            //Remove weird character codes
+                                            td_info = removeCharCodes(td_info);
 
-                                            Console.WriteLine(removeCharCodes("     " + td_info));
-                                            Console.ReadKey();
+                                            switch (i)
+                                            {
+                                                case 1:
+                                                    tempPerson.liquipediaName = td_info;
+                                                    break;
+                                                case 2:
+                                                    tempPerson.irlName = td_info;
+                                                    break;
+                                                case 3:
+                                                    tempPerson.teamName = td_info;
+                                                    break;
+                                                case 4:
+                                                    tempPerson.country = td_info;
+                                                    break;
+                                                case 5:
+                                                    tempPerson.mainRace = td_info;
+                                                    break;
+                                                case 6:
+                                                    tempPerson.twitchName = td_info;
+                                                    break;
+                                                default:
+                                                    Console.WriteLine("Oh Gawd. Something has gone horribly wrong. i = " + i.ToString());
+                                                    Console.ReadKey();
+                                                    break;
+                                            }
 
+                                            Console.WriteLine("     " + td_info);
+                                            //Console.ReadKey();
                                             //move the starting point
                                             tr_candidate = td_end;
                                         }
+                                        //write this tempPerson to the playerObject list
+                                        tlPeople.Add(tempPerson);
                                         Console.WriteLine(); //Just adding a line for space here.
+                                        Console.WriteLine(tempPerson.liquipediaName);
+                                        Console.WriteLine(tempPerson.irlName);
+                                        Console.WriteLine(tempPerson.teamName);
+                                        Console.WriteLine(tempPerson.country);
+                                        Console.WriteLine(tempPerson.mainRace);
+                                        Console.WriteLine(tempPerson.twitchName);
+                                        Console.WriteLine();
+                                       
+                                        //foreach (personObject person in tlPeople)
+                                        //{
+                                        //    Console.WriteLine(person.liquipediaName);
+                                        //    Console.WriteLine(person.irlName);
+                                        //   Console.WriteLine(person.teamName);
+                                        //    Console.WriteLine(person.country);
+                                        //   Console.WriteLine(person.mainRace);
+                                        //    Console.WriteLine(person.twitchName);
+                                        //    Console.WriteLine();
+                                        //    //Console.ReadKey();
+                                       // }
+                                       // Console.ReadKey();
                                     }
                                     c = tr_end;
                                 }
-                                Console.ReadKey();
+                                //Console.ReadKey();
                             }
                         }catch(ArgumentOutOfRangeException)
                         {
@@ -147,6 +212,7 @@ namespace ConsoleApplication1
                 }
                   
             }
+        
         }
 
         private static string InnerText(string inputHTML, int start, int end)
@@ -235,6 +301,7 @@ namespace ConsoleApplication1
                 string liquipediaURI,
                 string bnetName,
                 string bnetProfileURI,
+                string mainRace,
                 string teamName,
                 string teamSiteURI,
                 string irlName,
@@ -264,112 +331,119 @@ namespace ConsoleApplication1
             }
 
             private string liquipediaURIvalue;
-            private string liquipediaURI
+            public string liquipediaURI
             {
                 get { return liquipediaURIvalue; }
                 set { liquipediaURIvalue = value; }
             }
 
             private string bnetNamevalue;
-            private string bnetName
+            public string bnetName
             {
                 get { return bnetNamevalue; }
                 set { bnetNamevalue = value; }
             }
 
             private string bnetProfileURIvalue;
-            private string bnetProfileURI
+            public string bnetProfileURI
             {
                 get { return bnetProfileURIvalue; }
                 set { bnetProfileURIvalue = value; }
             }
 
+            private string mainRaceValue;
+            public string mainRace
+            {
+                get { return mainRaceValue; }
+                set { mainRaceValue = value; }
+            }
+
             private string teamNamevalue;
-            private string teamName
+            public string teamName
             {
                 get { return teamNamevalue; }
                 set { teamNamevalue = value; }
             }
 
             private string teamSiteURIvalue;
-            private string teamSiteURI
+            public string teamSiteURI
             {
                 get { return teamSiteURIvalue; }
                 set { teamSiteURIvalue = value; }
             }
 
             private string irlNamevalue;
-            private string irlName
+            public string irlName
             {
                 get { return irlNamevalue; }
                 set { irlNamevalue = value; }
             }
 
             private string twitterNamevalue;
-            private string twitterName
+            public string twitterName
             {
                 get { return twitterNamevalue; }
                 set { twitterNamevalue = value; }
             }
 
             private string countryvalue;
-            private string country
+            public string country
             {
                 get { return countryvalue; }
                 set { countryvalue = value; }
             }
 
             private string twitterURIvalue;
-            private string twitterURI
+            public string twitterURI
             {
                 get { return twitterURIvalue; }
                 set { twitterURIvalue = value; }
             }
 
             private string tlNamevalue;
-            private string tlName
+            public string tlName
             {
                 get { return tlNamevalue; }
                 set { tlNamevalue = value; }
             }
 
             private string tlProfileURIvalue;
-            private string tlProfileURI
+            public string tlProfileURI
             {
                 get { return tlProfileURIvalue; }
-                set { tlProfileURI = value; }
+                set { tlProfileURIvalue = value; }
             }
 
             private string fbNamevalue;
-            private string fbName
+            public string fbName
             {
                 get { return fbNamevalue; }
                 set { fbNamevalue = value; }
             }
 
             private string fbURIvalue;
-            private string fbURI
+            public string fbURI
             {
                 get { return fbURIvalue; }
                 set { fbURIvalue = value; }
             }
 
             private string twitchNamevalue;
-            private string twitchName
+            public string twitchName
             {
                 get { return twitchNamevalue; }
                 set { twitchNamevalue = value; }
             }
 
             private string twitchURIvalue;
-            private string twitchURI
+            public string twitchURI
             {
                 get { return twitchURIvalue; }
                 set { twitchURIvalue = value; }
             }
 
             private bool followedvalue;
-            private bool followed
+            public bool followed
             {
                 get { return followedvalue; }
                 set { followedvalue = value; }
