@@ -13,9 +13,15 @@ namespace ConsoleApplication1
         static void Main(string[] args)
         {
             //Blocking forward progress while I wait for an Http request, because this is just a console app (so no backgrounding)
+            Console.OutputEncoding = System.Text.Encoding.UTF8;
+            
             List<personObject> tlPeople = new List<personObject>();
             
             RunAsync(tlPeople).Wait();
+
+            Console.ReadKey();
+
+            tlPeople = tlPeople.OrderBy(o => o.liquipediaName).ToList();
 
             foreach (personObject person in tlPeople)
             {
@@ -26,11 +32,129 @@ namespace ConsoleApplication1
                 Console.WriteLine(person.mainRace);
                 Console.WriteLine(person.twitchName);
                 Console.WriteLine();
-                //Console.ReadKey();
             }
 
             Console.WriteLine("Done! " + tlPeople.Count.ToString() + " players found!");
-            Console.ReadKey();
+
+            int quitThisGame = 0;
+
+            while (quitThisGame == 0)
+            {
+                Console.WriteLine("Choose one of the following options: \n" +
+                                        "A. Sort list by some property \n" +
+                                        "B. Follow a user \n" +
+                                        "C. Unfollow a user \n" +
+                                        "D. Print the list, as sorted \n" +
+                                        "E. Print the followed user list \n" +
+                                        "Any other key to quit.");
+
+                Console.WriteLine();
+                string inKey = Console.ReadLine();
+                Console.WriteLine();
+                Console.WriteLine(inKey);
+                switch (inKey)
+                {
+                    case "A":
+                        Console.WriteLine("Choose a property to sort the list by: \n" +
+                                        "A. Liquipedia Name \n" +
+                                        "B. Real Name \n" +
+                                        "C. Team Name \n" +
+                                        "D. Country \n" +
+                                        "E. Main Race \n" +
+                                        "Any other key to quit.");
+                        Console.WriteLine();
+                        string inKey2 = Console.ReadLine();
+                        Console.WriteLine();
+                        switch (inKey2)
+	                        {
+                            case "A":
+                                    tlPeople = tlPeople.OrderBy(o => o.liquipediaName).ToList();
+                                    break;
+                            case "B":
+                                    tlPeople = tlPeople.OrderBy(o => o.irlName).ToList();
+                                    break;
+                            case "C":
+                                    tlPeople = tlPeople.OrderBy(o => o.teamName).ToList();
+                                    break;
+                            case "D":
+                                    tlPeople = tlPeople.OrderBy(o => o.country).ToList();
+                                    break;
+                            case "E":
+                                    tlPeople = tlPeople.OrderBy(o => o.mainRace).ToList();
+                                    break;
+                            default:
+                                    break;
+	                        }
+                        break;
+                    case "B":
+                        Console.WriteLine("Type the Liquipedia Name of the person to follow:");
+                        Console.WriteLine();
+                        string personToFollow = Console.ReadLine().ToUpper();
+                        var personToFollowObj = (from u in tlPeople
+                                                 where u.liquipediaName.ToUpper() == personToFollow
+                                                 select u);
+                        if (personToFollowObj.Count() != 1)
+                        {
+                            Console.WriteLine("Person not found!");
+                            break;
+                        }
+                        else
+                        {
+                            personToFollowObj.FirstOrDefault().followed = true;
+                            Console.WriteLine("Successfully followed " + personToFollowObj.First().liquipediaName);
+                        }
+                        break;
+                    case "C":
+                        Console.WriteLine("Type the Liquipedia Name of the person to unfollow:");
+                        Console.WriteLine();
+                        string personToUnfollow = Console.ReadLine();
+                        var personToUnfollowObj = (from u in tlPeople
+                                                   where u.liquipediaName == personToUnfollow
+                                                   select u);
+                        if (personToUnfollowObj.FirstOrDefault().Equals(null))
+                        {
+                            Console.WriteLine("Person not found!");
+                            break;
+                        }
+                        else
+                        {
+                            personToUnfollowObj.FirstOrDefault().followed = false;
+                            Console.WriteLine("Successfully unfollowed " + personToUnfollowObj.First().liquipediaName);
+                        }
+                        break;
+                    case "D":
+                        foreach (personObject person in tlPeople)
+                        {
+                            Console.WriteLine(person.liquipediaName);
+                            Console.WriteLine(person.irlName);
+                            Console.WriteLine(person.teamName);
+                            Console.WriteLine(person.country);
+                            Console.WriteLine(person.mainRace);
+                            Console.WriteLine(person.twitchName);
+                            Console.WriteLine();
+                        }
+                        break;
+                    case "E":
+                        var listOfFollowed = (from v in tlPeople
+                                              where v.followed
+                                              select v);
+                        foreach (personObject person in listOfFollowed)
+                        {
+                            Console.WriteLine(person.liquipediaName);
+                            Console.WriteLine(person.irlName);
+                            Console.WriteLine(person.teamName);
+                            Console.WriteLine(person.country);
+                            Console.WriteLine(person.mainRace);
+                            Console.WriteLine(person.twitchName);
+                            Console.WriteLine();
+                        }
+                        break;
+                    default:
+                        quitThisGame = 1;
+                        break;
+                }
+                Console.WriteLine();
+            }
         }
 
         static async Task RunAsync(List<personObject> tlPeople)
@@ -44,15 +168,19 @@ namespace ConsoleApplication1
                 continentPagesURI[2] = new Uri("http://wiki.teamliquid.net/starcraft2/Players_(Asia)");
                 continentPagesURI[3] = new Uri("http://wiki.teamliquid.net/starcraft2/Players_(Korea)");
                 client.BaseAddress = continentPagesURI[0];
-
+                
                 foreach (Uri continentUri in continentPagesURI)
                 {
+                                      
+                    var response = await client.GetByteArrayAsync(continentUri);
                     
-                    HttpResponseMessage response = await client.GetAsync(continentUri);
-                    if (response.IsSuccessStatusCode)
+                    if (true)
                     {
-                        string responseString = await response.Content.ReadAsStringAsync();
-                    
+                        
+                        string responseString = Encoding.UTF8.GetString(response, 0, response.Length - 1);
+                        //byte[] bytes = Encoding.UTF8.GetBytes(responseString);
+                        //responseString = Encoding.UTF8.GetString(bytes);
+                        
                         int c = 0;
                         int countryStart = 0;
                         int countryEnd = 0;
@@ -63,7 +191,7 @@ namespace ConsoleApplication1
                         int td_start = 0;
                         int td_end = 0;
                         int td_length = 0;
-                        string td_tags;
+                        string td_tags = "";
                         string td_info;
                         
                         
@@ -81,9 +209,8 @@ namespace ConsoleApplication1
 
                                 //InnerText() goes through each char in the responseString from start to end and does a Console.Write
                                 //for every char that isn't nested in brackets (so everything that isn't HTML markup)
-
-                                string countryName = InnerText(responseString, countryStart, countryEnd).Trim();
-                                //Console.WriteLine(countryName);
+                                //No need to actually do this, as each Player comes with a country TD
+                                //string countryName = InnerText(responseString, countryStart, countryEnd).Trim();
                                 c = countryEnd + 4;
 
                                 //Find the scope of the current country table
@@ -107,8 +234,16 @@ namespace ConsoleApplication1
 
                                     tr_candidate = responseString.IndexOf("<tr bgcolor=", c); //finds a <tr> with a bgcolor specified, which should be a player
                                     
-                                    if (tr_candidate == -1) break;
-                                    
+                                    if (tr_candidate == -1)
+                                    {
+                                        //Console.WriteLine("No TR tag found");
+                                        break;
+                                    }else if (tr_candidate > tableEnd)
+                                    {
+                                        //Console.WriteLine("Next TR tag suprasses this table.");
+                                        break;
+                                    }
+                                                                        
                                     tr_end = responseString.IndexOf("</tr>", tr_candidate);
                                     string colorCode = responseString.Substring(tr_candidate + 13, 7); //grabs just the 7-character color code
 
@@ -144,6 +279,11 @@ namespace ConsoleApplication1
                                                     break;
                                                 case 2:
                                                     tempPerson.irlName = td_info;
+                                                    if (tempPerson.liquipediaName == "Cloudy")
+                                                    {
+                                                        Console.WriteLine(td_tags);
+                                                        Console.ReadKey();
+                                                    }
                                                     break;
                                                 case 3:
                                                     tempPerson.teamName = td_info;
@@ -203,6 +343,7 @@ namespace ConsoleApplication1
             }
         
         }
+
 
         private static string InnerText(string inputHTML, int start, int end)
         {
@@ -486,6 +627,7 @@ namespace ConsoleApplication1
                 set { followedvalue = value; }
             }
         }
+    
     }
 
 }
