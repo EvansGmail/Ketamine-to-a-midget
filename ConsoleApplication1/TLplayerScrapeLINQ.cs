@@ -29,7 +29,7 @@ namespace ConsoleApplication1
                 //Console.ReadKey();
             }
 
-            Console.WriteLine("Done!");
+            Console.WriteLine("Done! " + tlPeople.Count.ToString() + " players found!");
             Console.ReadKey();
         }
 
@@ -63,6 +63,7 @@ namespace ConsoleApplication1
                         int td_start = 0;
                         int td_end = 0;
                         int td_length = 0;
+                        string td_tags;
                         string td_info;
                         
                         
@@ -82,7 +83,7 @@ namespace ConsoleApplication1
                                 //for every char that isn't nested in brackets (so everything that isn't HTML markup)
 
                                 string countryName = InnerText(responseString, countryStart, countryEnd).Trim();
-                                Console.WriteLine(countryName);
+                                //Console.WriteLine(countryName);
                                 c = countryEnd + 4;
 
                                 //Find the scope of the current country table
@@ -128,9 +129,9 @@ namespace ConsoleApplication1
                                             td_length = nextTDlength(responseString, tr_candidate);
 
                                             //Do the following operations on just the TD
-                                            td_info = responseString.Substring(td_start, td_length);
+                                            td_tags = responseString.Substring(td_start, td_length);
                                             //Remove the <span> tags that are duplicating information
-                                            td_info = removeTag(td_info, "span");
+                                            td_info = removeTag(td_tags, "span");
                                             //Clip out all the tags
                                             td_info = InnerText(td_info, 0, td_info.Length).Trim();
                                             //Remove weird character codes
@@ -154,7 +155,8 @@ namespace ConsoleApplication1
                                                     tempPerson.mainRace = td_info;
                                                     break;
                                                 case 6:
-                                                    tempPerson.twitchName = td_info;
+                                                    //This will grab twitch IDs, but not own3d IDs
+                                                    tempPerson.twitchName = twitchIDfromURI(grabHREF(td_tags));
                                                     break;
                                                 default:
                                                     Console.WriteLine("Oh Gawd. Something has gone horribly wrong. i = " + i.ToString());
@@ -162,34 +164,21 @@ namespace ConsoleApplication1
                                                     break;
                                             }
 
-                                            Console.WriteLine("     " + td_info);
+                                            //Console.WriteLine("     " + td_info);
                                             //Console.ReadKey();
                                             //move the starting point
                                             tr_candidate = td_end;
                                         }
                                         //write this tempPerson to the playerObject list
                                         tlPeople.Add(tempPerson);
-                                        Console.WriteLine(); //Just adding a line for space here.
-                                        Console.WriteLine(tempPerson.liquipediaName);
-                                        Console.WriteLine(tempPerson.irlName);
-                                        Console.WriteLine(tempPerson.teamName);
-                                        Console.WriteLine(tempPerson.country);
-                                        Console.WriteLine(tempPerson.mainRace);
-                                        Console.WriteLine(tempPerson.twitchName);
-                                        Console.WriteLine();
-                                       
-                                        //foreach (personObject person in tlPeople)
-                                        //{
-                                        //    Console.WriteLine(person.liquipediaName);
-                                        //    Console.WriteLine(person.irlName);
-                                        //   Console.WriteLine(person.teamName);
-                                        //    Console.WriteLine(person.country);
-                                        //   Console.WriteLine(person.mainRace);
-                                        //    Console.WriteLine(person.twitchName);
-                                        //    Console.WriteLine();
-                                        //    //Console.ReadKey();
-                                       // }
-                                       // Console.ReadKey();
+                                        //Console.WriteLine(); //Just adding a line for space here.
+                                        //Console.WriteLine(tempPerson.liquipediaName);
+                                        //Console.WriteLine(tempPerson.irlName);
+                                        //Console.WriteLine(tempPerson.teamName);
+                                        //Console.WriteLine(tempPerson.country);
+                                        //Console.WriteLine(tempPerson.mainRace);
+                                        //Console.WriteLine(tempPerson.twitchName);
+                                        //Console.WriteLine();
                                     }
                                     c = tr_end;
                                 }
@@ -287,6 +276,54 @@ namespace ConsoleApplication1
                 return sourceString.Remove(startTag, removeLength);
             }
             else return sourceString;
+        }
+
+        public static string grabHREF(string sourceString)
+        {
+            int hrefLocation = sourceString.IndexOf("href");
+            int urlStart = new int();
+
+            if (hrefLocation != -1)
+            {
+                urlStart = sourceString.IndexOf("\"", hrefLocation) + 1;
+            }
+            else urlStart = 0;
+
+            int urlEnd = new int();
+
+            if (urlStart != 0)
+            {
+                urlEnd = sourceString.IndexOf("\"", urlStart);
+            }
+            else urlEnd = -1;
+
+            int urlLength = urlEnd - urlStart;
+
+            if ((hrefLocation != -1) && (urlStart != 0) && (urlEnd != -1) && (urlStart < urlEnd))
+            {
+                return sourceString.Substring(urlStart, urlLength);
+            }
+            else return "No link tags found";
+        }
+
+        public static string twitchIDfromURI(string sourceString)
+        {
+            int idStart = sourceString.IndexOf("twitch.tv/") + 10;
+            int idEnd = new int();
+            
+            if (idStart != 9)
+            {
+                idEnd = sourceString.Length;
+            }
+            else idEnd = -1;
+
+            int idLength = idEnd - idStart;
+
+            if ((idStart != 9) && (idEnd != -1) && (idStart < idEnd))
+            {
+                return sourceString.Substring(idStart, idLength);
+            }
+            else return "No Twitch ID found";       
         }
 
         public class personObject
