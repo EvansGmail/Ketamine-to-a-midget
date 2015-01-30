@@ -5,6 +5,9 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Net.Http;
+using System.IO;
+using System.Runtime.Serialization.Formatters.Binary;
+using System.Runtime.Serialization;
 
 namespace ConsoleApplication1
 {
@@ -13,28 +16,51 @@ namespace ConsoleApplication1
         static void Main(string[] args)
         {
             //Blocking forward progress while I wait for an Http request, because this is just a console app (so no backgrounding)
+            //UTF8 encoding required for Chinese characters (but still won't work in console window)
             Console.OutputEncoding = System.Text.Encoding.UTF8;
-            
+            //Saved people file
+            string fileName = "dataStuff.myData";
+            IFormatter formatter = new BinaryFormatter();
+
+
             List<personObject> tlPeople = new List<personObject>();
             
             RunAsync(tlPeople).Wait();
 
-            Console.ReadKey();
-
             tlPeople = tlPeople.OrderBy(o => o.liquipediaName).ToList();
 
-            foreach (personObject person in tlPeople)
-            {
-                Console.WriteLine(person.liquipediaName);
-                Console.WriteLine(person.irlName);
-                Console.WriteLine(person.teamName);
-                Console.WriteLine(person.country);
-                Console.WriteLine(person.mainRace);
-                Console.WriteLine(person.twitchName);
-                Console.WriteLine();
-            }
+            //This commented out code will just spit out all the people it found, and their properties.
+            //foreach (personObject person in tlPeople)
+            //{
+            //    Console.WriteLine(person.liquipediaName);
+            //    Console.WriteLine(person.irlName);
+            //    Console.WriteLine(person.teamName);
+            //    Console.WriteLine(person.country);
+            //    Console.WriteLine(person.mainRace);
+            //    Console.WriteLine(person.twitchName);
+            //    Console.WriteLine();
+            //}
 
             Console.WriteLine("Done! " + tlPeople.Count.ToString() + " players found!");
+
+            FileStream d = new FileStream(fileName, FileMode.Open);
+            if (d.Length != 0)
+                {
+                personObject t = (personObject)formatter.Deserialize(d);
+                var personToFollowObj = (from u in tlPeople
+                                         where u.liquipediaName.ToUpper() == t.liquipediaName.ToUpper()
+                                         select u);
+                if (personToFollowObj.Count() != 1)
+                    {
+                        Console.WriteLine("Person not found!");
+                    }
+                else
+                    {
+                        personToFollowObj.FirstOrDefault().followed = true;
+                        Console.WriteLine("Successfully followed " + personToFollowObj.First().liquipediaName);
+                    }
+                }
+            d.Close();
 
             int quitThisGame = 0;
 
@@ -101,15 +127,18 @@ namespace ConsoleApplication1
                         else
                         {
                             personToFollowObj.FirstOrDefault().followed = true;
+                            FileStream s = new FileStream(fileName, FileMode.Open);
+                            formatter.Serialize(s, personToFollowObj.FirstOrDefault());
+                            s.Close();
                             Console.WriteLine("Successfully followed " + personToFollowObj.First().liquipediaName);
                         }
                         break;
                     case "C":
                         Console.WriteLine("Type the Liquipedia Name of the person to unfollow:");
                         Console.WriteLine();
-                        string personToUnfollow = Console.ReadLine();
+                        string personToUnfollow = Console.ReadLine().ToUpper();
                         var personToUnfollowObj = (from u in tlPeople
-                                                   where u.liquipediaName == personToUnfollow
+                                                   where u.liquipediaName.ToUpper() == personToUnfollow
                                                    select u);
                         if (personToUnfollowObj.FirstOrDefault().Equals(null))
                         {
@@ -155,7 +184,11 @@ namespace ConsoleApplication1
                 }
                 Console.WriteLine();
             }
+
+
         }
+
+
 
         static async Task RunAsync(List<personObject> tlPeople)
         {
@@ -172,14 +205,19 @@ namespace ConsoleApplication1
                 foreach (Uri continentUri in continentPagesURI)
                 {
                                       
-                    var response = await client.GetByteArrayAsync(continentUri);
+                    var response = await client.GetAsync(continentUri);
                     
-                    if (true)
+                    if (response.IsSuccessStatusCode)
                     {
-                        
-                        string responseString = Encoding.UTF8.GetString(response, 0, response.Length - 1);
-                        //byte[] bytes = Encoding.UTF8.GetBytes(responseString);
-                        //responseString = Encoding.UTF8.GetString(bytes);
+                        UTF8Encoding utf8 = new UTF8Encoding();
+                        //string responseString = utf8.GetString(response);
+                        string responseString = await response.Content.ReadAsStringAsync();
+                        //var responseString = Encoding.UTF8.GetString(responseStringFromBytes, 0, response.Length - 1);
+                        //These two commented rows are relics of my failed attempt at handling foreign-language characters
+                        //encoded as UTF8. Apparently, the entire struggle was doomed because my console can't display UTF8
+                        //characters with byte lengths longer than 8, even with the encoding set to UTF8.
+                        //If I want to ensure UTF8 characters later (after adding a GUI,) I can ressurect these; I mey need to change the
+                        //two operative lines to read from a Byte Array and convert it to a String using UTF8 encoding.
                         
                         int c = 0;
                         int countryStart = 0;
@@ -193,7 +231,6 @@ namespace ConsoleApplication1
                         int td_length = 0;
                         string td_tags = "";
                         string td_info;
-                        
                         
                         try
                         {
@@ -209,11 +246,11 @@ namespace ConsoleApplication1
 
                                 //InnerText() goes through each char in the responseString from start to end and does a Console.Write
                                 //for every char that isn't nested in brackets (so everything that isn't HTML markup)
-                                //No need to actually do this, as each Player comes with a country TD
+                                //No need to actually do the commented out line for country, as each Player comes with a country <TD> tag
                                 //string countryName = InnerText(responseString, countryStart, countryEnd).Trim();
                                 c = countryEnd + 4;
 
-                                //Find the scope of the current country table
+                                //Find the scope of the current country's table of players
 
                                 tableStart = responseString.IndexOf("<table ", countryEnd);
                                 tableEnd = responseString.IndexOf("<h3><span class=\"mw-headline\" id=", tableStart);
@@ -222,16 +259,23 @@ namespace ConsoleApplication1
 
                                 c = tableStart + 6;
 
-                                //Need to add a loop here to account for multiple tables, and how to deal with inactive players/coaches, etc.
 
+                                //As it turns out, each country has more than one table (for e.g. retired players, casters, etc.,) so I changed
+                                //"tableEnd" to the beginning of the next country; that way it just keeps reading <tr>s until it hits the next
+                                //full country block of folks.
+                                //I suppose I could skip the whole process and just read ever <tr> on the page at once... but that does make me
+                                //nervous. This way I can control the stream a bit more if need be. For example, later I may want to keep track
+                                //of which players are active, which are casters, which are retired, etc.
 
                                 while (c < tableEnd)
                                 {
 
                                     //Now, I need to look for every <tr bgcolor="(red, blue, green or yellow)"> until I run into the end of the Country; I can start from c because I already incemented it.
                                     //tr_candidate is the location of a tr bgcolor; I need to check to see if it is one of the right colors
-                                    //***For now, this code just looks for the first tr bgcolor! I need to make it loop!***
-
+                                    //Why the tr bgcolor? I'm glad you asked! Liquipedia colors the player table rows based on a player's race (Terran,
+                                    //Zerg or Protoss,) so it's an easy way to discern whether a row is a player, or a header, or a bunch of blanks.
+                                    //It will break if TL ever redesigns these pages, but then... what wouldn't break?
+                                    
                                     tr_candidate = responseString.IndexOf("<tr bgcolor=", c); //finds a <tr> with a bgcolor specified, which should be a player
                                     
                                     if (tr_candidate == -1)
@@ -240,7 +284,7 @@ namespace ConsoleApplication1
                                         break;
                                     }else if (tr_candidate > tableEnd)
                                     {
-                                        //Console.WriteLine("Next TR tag suprasses this table.");
+                                        //Console.WriteLine("The next TR tag suprasses this table.");
                                         break;
                                     }
                                                                         
@@ -250,28 +294,30 @@ namespace ConsoleApplication1
                                     if (colorCode.Equals("#B8B8F2") //blue (Terran)
                                         || colorCode.Equals("#B8F2B8") //green (Protoss)
                                         || colorCode.Equals("#F2B8B8") //pink (Zerg)
-                                        || colorCode.Equals("#F2E8B8")) //ugly (Random?)
+                                        || colorCode.Equals("#F2E8B8")) //ugly tan color (Random?)
                                     {
-                                        //We've found a player TR! So grab the info out of each <td> (some may be empty!) and spill it
-                                        //This would be the time to initialize a player object, and then fill in info as it comes up in the for loop.
+                                        //We've found a player TR! So grab the info out of each <td> (some may be empty!) and spill it to the player database
+                                        //Creating a new person to put information into
                                         personObject tempPerson = new personObject();
 
                                         for (var i = 1; i <= 6; i++)
                                         {
-                                            //There should be exactly 6 TDs; for now cycle through them. If liquipedia changes this, it will break
+                                            //There should be exactly 6 TDs; for now, cycle through them and use switch to assign data to properties.
+                                            //If liquipedia changes the table, this (and everything else) will break
                                             td_start = nextTDstart(responseString, tr_candidate);
                                             td_end = nextTDend(responseString, tr_candidate);
                                             td_length = nextTDlength(responseString, tr_candidate);
 
-                                            //Do the following operations on just the TD
+                                            //Td_tags is just the HTML code for this player; it is easier to inspect with WriteLine than the whole page 
                                             td_tags = responseString.Substring(td_start, td_length);
-                                            //Remove the <span> tags that are duplicating information
+                                            //Remove the <span>...</span> sections that are duplicating some information (like team names)
                                             td_info = removeTag(td_tags, "span");
-                                            //Clip out all the tags
+                                            //Clip out all the HTML tag <...> substrings; leave just the content 
                                             td_info = InnerText(td_info, 0, td_info.Length).Trim();
-                                            //Remove weird character codes
+                                            //Remove weird character codes like &#160;
                                             td_info = removeCharCodes(td_info);
 
+                                            //Assign the properties you are grabbing to the personObject
                                             switch (i)
                                             {
                                                 case 1:
@@ -279,11 +325,6 @@ namespace ConsoleApplication1
                                                     break;
                                                 case 2:
                                                     tempPerson.irlName = td_info;
-                                                    if (tempPerson.liquipediaName == "Cloudy")
-                                                    {
-                                                        Console.WriteLine(td_tags);
-                                                        Console.ReadKey();
-                                                    }
                                                     break;
                                                 case 3:
                                                     tempPerson.teamName = td_info;
@@ -295,34 +336,25 @@ namespace ConsoleApplication1
                                                     tempPerson.mainRace = td_info;
                                                     break;
                                                 case 6:
-                                                    //This will grab twitch IDs, but not own3d IDs
+                                                    //This will grab twitch IDs, but will need to grab own3d IDs or, e.g. day9.tv
+                                                    //I also noticed MarineKing's twitch has an extra slash. Not sure why
                                                     tempPerson.twitchName = twitchIDfromURI(grabHREF(td_tags));
                                                     break;
                                                 default:
-                                                    Console.WriteLine("Oh Gawd. Something has gone horribly wrong. i = " + i.ToString());
-                                                    Console.ReadKey();
+                                                    //Console.WriteLine("Oh Gawd. Something has gone horribly wrong. i = " + i.ToString());
+                                                    // (It really has, code execution should never reach this)
+                                                    //Console.ReadKey();
                                                     break;
                                             }
-
-                                            //Console.WriteLine("     " + td_info);
-                                            //Console.ReadKey();
-                                            //move the starting point
+                                            //move the starting point to look for a new <tr> to the end of the last <td>
                                             tr_candidate = td_end;
                                         }
-                                        //write this tempPerson to the playerObject list
+                                        //Write this tempPerson to the playerObject list
                                         tlPeople.Add(tempPerson);
-                                        //Console.WriteLine(); //Just adding a line for space here.
-                                        //Console.WriteLine(tempPerson.liquipediaName);
-                                        //Console.WriteLine(tempPerson.irlName);
-                                        //Console.WriteLine(tempPerson.teamName);
-                                        //Console.WriteLine(tempPerson.country);
-                                        //Console.WriteLine(tempPerson.mainRace);
-                                        //Console.WriteLine(tempPerson.twitchName);
-                                        //Console.WriteLine();
                                     }
+                                    //Move the starting point to look for a new table to the last <tr> end
                                     c = tr_end;
                                 }
-                                //Console.ReadKey();
                             }
                         }catch(ArgumentOutOfRangeException)
                         {
@@ -354,8 +386,8 @@ namespace ConsoleApplication1
             string oneCharacter;
             
             //This is potentially confusing, because I call it "nesting" when it's really just keeping track of brackets,
-            // and there should never really be a nested bracket in HTML. I think I could just start capturing after a ">"
-            // until I reach a "<" without actually keeping track of the nesting.
+            // and not nested brackets (e.g. table brackets). I think I could just start capturing after a ">"
+            // until I reach a "<" without actually keeping track of the nesting... but leaving it as is for now.
 
             for (int i = start; i < end; i++)
             {
@@ -467,11 +499,13 @@ namespace ConsoleApplication1
             else return "No Twitch ID found";       
         }
 
-        public class personObject
+        [Serializable()]
+        public class personObject : ISerializable
         {
             //Create a new personObject with all details (but not content) to be scraped from various sources
             public personObject()
             {
+                //Empty constructor required to compile.
             }
 
             public personObject(
@@ -505,9 +539,9 @@ namespace ConsoleApplication1
             public string liquipediaName
             {
                 get { return uniqueID; }
-                set { uniqueID = value; }
+                set { uniqueID = value;}
             }
-
+            
             private string liquipediaURIvalue;
             public string liquipediaURI
             {
@@ -620,14 +654,31 @@ namespace ConsoleApplication1
                 set { twitchURIvalue = value; }
             }
 
+            //Serializing only this property and the name
             private bool followedvalue;
             public bool followed
             {
                 get { return followedvalue; }
-                set { followedvalue = value; }
+                set { followedvalue = value;}
+            }
+
+            // Implement this method to serialize data. The method is called  
+            // on serialization. 
+            public void GetObjectData(SerializationInfo info, StreamingContext context)
+            {
+                // Use the AddValue method to specify serialized values.
+                info.AddValue("followed", followedvalue, typeof(bool));
+                info.AddValue("liquipediaName", liquipediaName, typeof(string));
+
+            }
+
+            // The special constructor is used to deserialize values. 
+            public personObject(SerializationInfo info, StreamingContext context)
+            {
+                // Reset the property value using the GetValue method.
+                followedvalue = (bool) info.GetValue("followed", typeof(bool));
+                liquipediaName = (string)info.GetValue("liquipediaName", typeof(string));
             }
         }
-    
     }
-
 }
