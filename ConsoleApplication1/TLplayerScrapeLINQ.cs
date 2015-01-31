@@ -43,25 +43,37 @@ namespace ConsoleApplication1
 
             Console.WriteLine("Done! " + tlPeople.Count.ToString() + " players found!");
 
-            FileStream d = new FileStream(fileName, FileMode.Open);
-            if (d.Length != 0)
+            if (File.Exists(fileName))
+            {
+                FileStream d = new FileStream(fileName, FileMode.Open);
+                if (d.Length != 0)
                 {
-                personObject t = (personObject)formatter.Deserialize(d);
-                var personToFollowObj = (from u in tlPeople
-                                         where u.liquipediaName.ToUpper() == t.liquipediaName.ToUpper()
-                                         select u);
-                if (personToFollowObj.Count() != 1)
+                    while (d.Position != d.Length)
                     {
-                        Console.WriteLine("Person not found!");
-                    }
-                else
-                    {
-                        personToFollowObj.FirstOrDefault().followed = true;
-                        Console.WriteLine("Successfully followed " + personToFollowObj.First().liquipediaName);
+                        personObject t = (personObject)formatter.Deserialize(d);
+
+                        var personToFollowObj = (from u in tlPeople
+                                                 where u.liquipediaName.ToUpper() == t.liquipediaName.ToUpper()
+                                                 select u);
+                        if (personToFollowObj.Count() != 1)
+                        {
+                            Console.WriteLine("Person not found!");
+                        }
+                        else
+                        {
+                            personToFollowObj.FirstOrDefault().followed = true;
+                            Console.WriteLine("Successfully followed " + personToFollowObj.First().liquipediaName);
+                        }
                     }
                 }
-            d.Close();
-
+                d.Close();
+            }
+            else
+            {
+                FileStream d = new FileStream(fileName, FileMode.Create);
+                d.Close();
+            }
+            
             int quitThisGame = 0;
 
             while (quitThisGame == 0)
@@ -126,8 +138,9 @@ namespace ConsoleApplication1
                         }
                         else
                         {
+                            //Need to check to see if already followed
                             personToFollowObj.FirstOrDefault().followed = true;
-                            FileStream s = new FileStream(fileName, FileMode.Open);
+                            FileStream s = new FileStream(fileName, FileMode.Append);
                             formatter.Serialize(s, personToFollowObj.FirstOrDefault());
                             s.Close();
                             Console.WriteLine("Successfully followed " + personToFollowObj.First().liquipediaName);
@@ -147,6 +160,7 @@ namespace ConsoleApplication1
                         }
                         else
                         {
+                            //Need to check to see if person already unfollowed
                             personToUnfollowObj.FirstOrDefault().followed = false;
                             Console.WriteLine("Successfully unfollowed " + personToUnfollowObj.First().liquipediaName);
                         }
