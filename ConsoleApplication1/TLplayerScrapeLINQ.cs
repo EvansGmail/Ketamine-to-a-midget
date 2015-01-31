@@ -15,37 +15,205 @@ namespace ConsoleApplication1
     {
         static void Main(string[] args)
         {
-            //Blocking forward progress while I wait for an Http request, because this is just a console app (so no backgrounding)
+            //Blocking forward progress while I wait for the Http requests for player info
             //UTF8 encoding required for Chinese characters (but still won't work in console window)
             Console.OutputEncoding = System.Text.Encoding.UTF8;
-            //Saved people file
+            //dayaStuff.myData is the save follow for followed players. It is currently a binary file; a move to XML may make sense later to make it easier to hack/extend.
             string fileName = "dataStuff.myData";
-            IFormatter formatter = new BinaryFormatter();
-
+            
 
             List<personObject> tlPeople = new List<personObject>();
             
+            //Most of the functionality is hidden in RunAsync right now. It grabs all the web data.
             RunAsync(tlPeople).Wait();
-
+            
+            //Default ordering is by Liquipedia Name
             tlPeople = tlPeople.OrderBy(o => o.liquipediaName).ToList();
-
-            //This commented out code will just spit out all the people it found, and their properties.
-            //foreach (personObject person in tlPeople)
-            //{
-            //    Console.WriteLine(person.liquipediaName);
-            //    Console.WriteLine(person.irlName);
-            //    Console.WriteLine(person.teamName);
-            //    Console.WriteLine(person.country);
-            //    Console.WriteLine(person.mainRace);
-            //    Console.WriteLine(person.twitchName);
-            //    Console.WriteLine();
-            //}
 
             Console.WriteLine("Done! " + tlPeople.Count.ToString() + " players found!");
 
+            DeserializeFollowedPlayers(fileName, tlPeople); //Take players from "filename" and put them into List tlPeople (or create fileName if it doesn't exist)
+            
+            int quitThisGame = 0;
+
+            while (quitThisGame == 0)
+            {
+                Console.WriteLine("Choose one of the following options: \n" +
+                                        "A. Sort list by some property \n" +
+                                        "B. Follow a user \n" +
+                                        "C. Unfollow a user \n" +
+                                        "D. Print the list, as sorted \n" +
+                                        "E. Print the followed user list \n" +
+                                        "Q. Quit");
+
+                Console.WriteLine();
+                string inKey = Console.ReadLine().ToUpper();
+                Console.WriteLine();
+                switch (inKey)
+                {
+                    case "A":
+                        Console.WriteLine("Choose a property to sort the list by: \n" +
+                                        "A. Liquipedia Name \n" +
+                                        "B. Real Name \n" +
+                                        "C. Team Name \n" +
+                                        "D. Country \n" +
+                                        "E. Main Race \n" +
+                                        "Any other key to quit.");
+                        Console.WriteLine();
+                        string inKey2 = Console.ReadLine().ToUpper();
+                        Console.WriteLine();
+                        switch (inKey2)
+	                        {
+                            case "A":
+                                    tlPeople = tlPeople.OrderBy(o => o.liquipediaName).ToList();
+                                    break;
+                            case "B":
+                                    tlPeople = tlPeople.OrderBy(o => o.irlName).ToList();
+                                    break;
+                            case "C":
+                                    tlPeople = tlPeople.OrderBy(o => o.teamName).ToList();
+                                    break;
+                            case "D":
+                                    tlPeople = tlPeople.OrderBy(o => o.country).ToList();
+                                    break;
+                            case "E":
+                                    tlPeople = tlPeople.OrderBy(o => o.mainRace).ToList();
+                                    break;
+                            default:
+                                    break;
+	                        }
+                        break;
+                    case "B":
+                        Console.WriteLine("Type the Liquipedia Name of the person to follow:");
+                        Console.WriteLine();
+                        string personToFollow = Console.ReadLine().ToUpper();
+                        followAndSerialize(personToFollow, tlPeople, fileName);
+                        break;
+                    case "C":
+                        Console.WriteLine("Type the Liquipedia Name of the person to unfollow:");
+                        Console.WriteLine();
+                        string personToUnfollow = Console.ReadLine().ToUpper();
+                        unfollowAndStopSerializing(personToUnfollow, tlPeople, fileName);
+                        break;
+                    case "D":
+                        foreach (personObject person in tlPeople)
+                        {
+                            person.displayPersonProperties();
+                        }
+                        break;
+                    case "E":
+                        var listOfFollowed = (from v in tlPeople
+                                              where v.followed
+                                              select v);
+                        foreach (personObject person in listOfFollowed)
+                        {
+                            person.displayPersonProperties();
+                        }
+                        break;
+                    case "Q":
+                        quitThisGame = 1;
+                        break;
+                    default:
+                        break;
+                }
+                Console.WriteLine();
+            }
+
+
+        }
+
+        private static void unfollowAndStopSerializing(string personToUnfollow, List<personObject> tlPeople, string fileName)
+        {
+            var personToUnfollowObj = (from u in tlPeople
+                                       where u.liquipediaName.ToUpper() == personToUnfollow
+                                       select u);
+            if (personToUnfollowObj.FirstOrDefault().Equals(null))
+            {
+                Console.WriteLine("Person not found!");
+                return;
+            }
+            else
+            {
+                //Check to see if person already not being followed
+                if (!personToUnfollowObj.FirstOrDefault().followed)
+                {
+                    Console.WriteLine("You're not even following " + personToUnfollowObj.FirstOrDefault().liquipediaName + "!");
+                }
+                else
+                {
+                    personToUnfollowObj.FirstOrDefault().followed = false;
+                    FileStream s = new FileStream(fileName, FileMode.Open);
+                    IFormatter formatter = new BinaryFormatter();
+                    while (s.Position != s.Length)
+                    {
+                        long objStartPosition = s.Position;
+                        personObject v = (personObject)formatter.Deserialize(s);
+
+                        if (v.liquipediaName == personToUnfollowObj.FirstOrDefault().liquipediaName)
+                        {
+                            long nextObjPosition = s.Position;
+                            //Need to remove data from objStartPosition to (s.Position - 1). So, copy everything from s.Position to the end, and move is to objStartPosition, then truncate
+                            long bytesToGrab = s.Length - s.Position;
+                            int[] bytesLeft = new int[bytesToGrab];
+                            while (s.Position != s.Length)
+                            {
+                                bytesLeft[s.Position - nextObjPosition] = s.ReadByte();
+                            }
+
+                            BinaryWriter bw = new BinaryWriter(s);
+                            bw.Seek((int)objStartPosition, SeekOrigin.Begin);
+                            for (int i = 0; i < bytesToGrab; i++)
+                            {
+                                bw.Write((byte)bytesLeft[i]);
+                            }
+                            s.SetLength(s.Position);
+                            //Set the position equal to the end after you truncate the file; that way this while loop will exit
+                        }
+
+                    }
+                    s.Close();
+                    Console.WriteLine("Successfully unfollowed " + personToUnfollowObj.First().liquipediaName);
+                }
+                return;
+            }
+        }
+
+        private static void followAndSerialize(string personToFollow, List<personObject> tlPeople, string fileName)
+        {
+            var personToFollowObj = (from u in tlPeople
+                                     where u.liquipediaName.ToUpper() == personToFollow
+                                     select u);
+            if (personToFollowObj.Count() != 1)
+            {
+                Console.WriteLine("Person not found!");
+                return;
+            }
+            else
+            {
+                //Check to see if already followed
+                if (personToFollowObj.FirstOrDefault().followed)
+                {
+                    Console.WriteLine("You're already following " + personToFollowObj.FirstOrDefault().liquipediaName + "!");
+                }
+                else
+                {
+                    personToFollowObj.FirstOrDefault().followed = true;
+                    FileStream s = new FileStream(fileName, FileMode.Append);
+                    IFormatter formatter = new BinaryFormatter();
+                    formatter.Serialize(s, personToFollowObj.FirstOrDefault());
+                    s.Close();
+                    Console.WriteLine("Successfully followed " + personToFollowObj.First().liquipediaName);
+                }
+                return;
+            }
+        }
+
+        private static void DeserializeFollowedPlayers(string fileName, List<personObject> tlPeople)
+        {
             if (File.Exists(fileName))
             {
                 FileStream d = new FileStream(fileName, FileMode.Open);
+                IFormatter formatter = new BinaryFormatter();
                 if (d.Length != 0)
                 {
                     while (d.Position != d.Length)
@@ -73,133 +241,6 @@ namespace ConsoleApplication1
                 FileStream d = new FileStream(fileName, FileMode.Create);
                 d.Close();
             }
-            
-            int quitThisGame = 0;
-
-            while (quitThisGame == 0)
-            {
-                Console.WriteLine("Choose one of the following options: \n" +
-                                        "A. Sort list by some property \n" +
-                                        "B. Follow a user \n" +
-                                        "C. Unfollow a user \n" +
-                                        "D. Print the list, as sorted \n" +
-                                        "E. Print the followed user list \n" +
-                                        "Any other key to quit.");
-
-                Console.WriteLine();
-                string inKey = Console.ReadLine();
-                Console.WriteLine();
-                Console.WriteLine(inKey);
-                switch (inKey)
-                {
-                    case "A":
-                        Console.WriteLine("Choose a property to sort the list by: \n" +
-                                        "A. Liquipedia Name \n" +
-                                        "B. Real Name \n" +
-                                        "C. Team Name \n" +
-                                        "D. Country \n" +
-                                        "E. Main Race \n" +
-                                        "Any other key to quit.");
-                        Console.WriteLine();
-                        string inKey2 = Console.ReadLine();
-                        Console.WriteLine();
-                        switch (inKey2)
-	                        {
-                            case "A":
-                                    tlPeople = tlPeople.OrderBy(o => o.liquipediaName).ToList();
-                                    break;
-                            case "B":
-                                    tlPeople = tlPeople.OrderBy(o => o.irlName).ToList();
-                                    break;
-                            case "C":
-                                    tlPeople = tlPeople.OrderBy(o => o.teamName).ToList();
-                                    break;
-                            case "D":
-                                    tlPeople = tlPeople.OrderBy(o => o.country).ToList();
-                                    break;
-                            case "E":
-                                    tlPeople = tlPeople.OrderBy(o => o.mainRace).ToList();
-                                    break;
-                            default:
-                                    break;
-	                        }
-                        break;
-                    case "B":
-                        Console.WriteLine("Type the Liquipedia Name of the person to follow:");
-                        Console.WriteLine();
-                        string personToFollow = Console.ReadLine().ToUpper();
-                        var personToFollowObj = (from u in tlPeople
-                                                 where u.liquipediaName.ToUpper() == personToFollow
-                                                 select u);
-                        if (personToFollowObj.Count() != 1)
-                        {
-                            Console.WriteLine("Person not found!");
-                            break;
-                        }
-                        else
-                        {
-                            //Need to check to see if already followed
-                            personToFollowObj.FirstOrDefault().followed = true;
-                            FileStream s = new FileStream(fileName, FileMode.Append);
-                            formatter.Serialize(s, personToFollowObj.FirstOrDefault());
-                            s.Close();
-                            Console.WriteLine("Successfully followed " + personToFollowObj.First().liquipediaName);
-                        }
-                        break;
-                    case "C":
-                        Console.WriteLine("Type the Liquipedia Name of the person to unfollow:");
-                        Console.WriteLine();
-                        string personToUnfollow = Console.ReadLine().ToUpper();
-                        var personToUnfollowObj = (from u in tlPeople
-                                                   where u.liquipediaName.ToUpper() == personToUnfollow
-                                                   select u);
-                        if (personToUnfollowObj.FirstOrDefault().Equals(null))
-                        {
-                            Console.WriteLine("Person not found!");
-                            break;
-                        }
-                        else
-                        {
-                            //Need to check to see if person already unfollowed
-                            personToUnfollowObj.FirstOrDefault().followed = false;
-                            Console.WriteLine("Successfully unfollowed " + personToUnfollowObj.First().liquipediaName);
-                        }
-                        break;
-                    case "D":
-                        foreach (personObject person in tlPeople)
-                        {
-                            Console.WriteLine(person.liquipediaName);
-                            Console.WriteLine(person.irlName);
-                            Console.WriteLine(person.teamName);
-                            Console.WriteLine(person.country);
-                            Console.WriteLine(person.mainRace);
-                            Console.WriteLine(person.twitchName);
-                            Console.WriteLine();
-                        }
-                        break;
-                    case "E":
-                        var listOfFollowed = (from v in tlPeople
-                                              where v.followed
-                                              select v);
-                        foreach (personObject person in listOfFollowed)
-                        {
-                            Console.WriteLine(person.liquipediaName);
-                            Console.WriteLine(person.irlName);
-                            Console.WriteLine(person.teamName);
-                            Console.WriteLine(person.country);
-                            Console.WriteLine(person.mainRace);
-                            Console.WriteLine(person.twitchName);
-                            Console.WriteLine();
-                        }
-                        break;
-                    default:
-                        quitThisGame = 1;
-                        break;
-                }
-                Console.WriteLine();
-            }
-
-
         }
 
 
@@ -692,6 +733,17 @@ namespace ConsoleApplication1
                 // Reset the property value using the GetValue method.
                 followedvalue = (bool) info.GetValue("followed", typeof(bool));
                 liquipediaName = (string)info.GetValue("liquipediaName", typeof(string));
+            }
+
+            public void displayPersonProperties()
+            {
+                Console.WriteLine(this.liquipediaName);
+                Console.WriteLine(this.irlName);
+                Console.WriteLine(this.teamName);
+                Console.WriteLine(this.country);
+                Console.WriteLine(this.mainRace);
+                Console.WriteLine(this.twitchName);
+                Console.WriteLine();
             }
         }
     }
