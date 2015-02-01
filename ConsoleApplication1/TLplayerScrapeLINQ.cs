@@ -44,6 +44,7 @@ namespace ConsoleApplication1
                                         "C. Unfollow a user \n" +
                                         "D. Print the list, as sorted \n" +
                                         "E. Print the followed user list \n" +
+                                        "F. Print player detail \n" +
                                         "Q. Quit");
 
                 Console.WriteLine();
@@ -110,6 +111,12 @@ namespace ConsoleApplication1
                             person.displayPersonProperties();
                         }
                         break;
+                    case "F":
+                        Console.WriteLine("Type the Liquipedia Name of the person whose details you want to see:");
+                        Console.WriteLine();
+                        string personForDetailView = Console.ReadLine().ToUpper();
+                        extractPersonDetail(personForDetailView, tlPeople).Wait();
+                        break;
                     case "Q":
                         quitThisGame = 1;
                         break;
@@ -120,6 +127,66 @@ namespace ConsoleApplication1
             }
 
 
+        }
+
+        static async Task extractPersonDetail(string personForDetailView, List<personObject> tlPeople)
+        {
+            var personToDetailObj = (from u in tlPeople
+                                     where u.liquipediaName.ToUpper() == personForDetailView
+                                     select u);
+            if (personToDetailObj.FirstOrDefault().Equals(null))
+            {
+                Console.WriteLine("Person not found!");
+                return;
+            }
+            else
+            {
+                personObject person = personToDetailObj.FirstOrDefault(); 
+                
+                //1. Load async the players teamliquid.net profile URL
+                using (var client = new HttpClient())
+                {
+                    Uri playerDetailUri = new Uri(person.liquipediaURI);
+                    
+                    var response = await client.GetAsync(playerDetailUri);
+
+                    if (response.IsSuccessStatusCode)
+                    {
+                        UTF8Encoding utf8 = new UTF8Encoding();
+                        //string responseString = utf8.GetString(response);
+                        string responseString = await response.Content.ReadAsStringAsync();
+
+                        int infoBox_index = responseString.IndexOf("<div class=\"infobox-center infobox-icons\">");
+                        int infoBox_end = responseString.IndexOf("</div>", infoBox_index) + 6;
+                        int infoBox_length = infoBox_end - infoBox_index;
+                        string infoBox_tags = responseString.Substring(infoBox_index, infoBox_length);
+                        
+                        person.tlForumURI = hrefFromTitle(infoBox_tags, "Teamliquid.Net Profile");
+                        person.twitterURI = hrefFromTitle(infoBox_tags, "Twitter");
+                        person.fbURI = hrefFromTitle(infoBox_tags, "Facebook");
+                        person.twitchURI = hrefFromTitle(infoBox_tags, "Twitch Stream");
+                        person.redditProfileURI = hrefFromTitle(infoBox_tags, "Reddit Profile");
+
+                        //There are some other tags, e.g., battle.net urls, that show up later under "external links"
+                        //Since I really want to move on to pulling the posts from TL, I'm putting off grabbing that
+                        //stuff until later.
+                    }
+
+                    //2. Scrape that page for the rest of the detail properties
+                    //3. Fill those (switch like the main list scraper)
+                }
+                //4. Display the details (will ultimately return)
+            }
+        }
+
+        public static string hrefFromTitle(string sourceString, string title_name)
+        {
+            int title_index = sourceString.IndexOf("title=\"" + title_name + "\"");
+            int tag_index = sourceString.LastIndexOf("<a href=\"", title_index);
+            int href_start = sourceString.IndexOf("\"", tag_index);
+            int href_end = sourceString.IndexOf("\"", href_start);
+            int href_length = href_end - href_start;
+            return sourceString.Substring(href_start, href_length); 
         }
 
         private static void unfollowAndStopSerializing(string personToUnfollow, List<personObject> tlPeople, string fileName)
@@ -242,8 +309,6 @@ namespace ConsoleApplication1
                 d.Close();
             }
         }
-
-
 
         static async Task RunAsync(List<personObject> tlPeople)
         {
@@ -377,6 +442,7 @@ namespace ConsoleApplication1
                                             {
                                                 case 1:
                                                     tempPerson.liquipediaName = td_info;
+                                                    tempPerson.liquipediaURI = "http://wiki.teamliquid.net" + grabHREF(td_tags);
                                                     break;
                                                 case 2:
                                                     tempPerson.irlName = td_info;
@@ -604,6 +670,13 @@ namespace ConsoleApplication1
                 set { liquipediaURIvalue = value; }
             }
 
+            private string tlForumURIvalue;
+            public string tlForumURI
+            {
+                get { return tlForumURIvalue;}
+                set { tlForumURIvalue = value;}
+            }
+
             private string bnetNamevalue;
             public string bnetName
             {
@@ -674,11 +747,18 @@ namespace ConsoleApplication1
                 set { tlNamevalue = value; }
             }
 
-            private string tlProfileURIvalue;
-            public string tlProfileURI
+            private string redditProfileURIValue;
+            public string redditProfileURI
             {
-                get { return tlProfileURIvalue; }
-                set { tlProfileURIvalue = value; }
+                get { return redditProfileURIValue; }
+                set { redditProfileURIValue = value; }
+            }
+
+            private string redditUsernameValue;
+            public string redditUsername
+            {
+                get { return redditUsernameValue; }
+                set { redditUsernameValue = value; }
             }
 
             private string fbNamevalue;
@@ -738,6 +818,7 @@ namespace ConsoleApplication1
             public void displayPersonProperties()
             {
                 Console.WriteLine(this.liquipediaName);
+                Console.WriteLine(this.liquipediaURI);
                 Console.WriteLine(this.irlName);
                 Console.WriteLine(this.teamName);
                 Console.WriteLine(this.country);
