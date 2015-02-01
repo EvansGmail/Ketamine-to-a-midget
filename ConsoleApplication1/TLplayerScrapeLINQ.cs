@@ -205,7 +205,7 @@ namespace ConsoleApplication1
             {
                 int name_index = URI_index + URIStub.Length;
                 int name_length = fullURI.Length - name_index;
-                return fullURI.Substring(name_index, name_length);
+                return removeCharCodes(fullURI.Substring(name_index, name_length));
             }
         }
 
@@ -558,7 +558,7 @@ namespace ConsoleApplication1
                             }
                         }catch(ArgumentOutOfRangeException)
                         {
-                            Console.WriteLine("Index is out of range; responseString.length = " + responseString.Length.ToString()
+                            Console.WriteLine("An index was out of range; responseString.length = " + responseString.Length.ToString()
                                 + ", c = " + c.ToString()
                                 + ", start = " + countryStart.ToString()
                                 + ", end = " + countryEnd.ToString()
@@ -618,7 +618,10 @@ namespace ConsoleApplication1
         
         public static string removeCharCodes(string inputString)
         {
-            return inputString.Replace("&#160;","");
+            return inputString.Replace("&#160;","")
+                              .Replace("%20", " ")
+                              .Replace("%5B", "[")
+                              .Replace("%5D", "]");
         }
 
         public static int nextTDstart(string searchString, int startPosition)
@@ -708,26 +711,24 @@ namespace ConsoleApplication1
                 //Empty constructor required to compile.
             }
 
-            public personObject(
-                string liquipediaName,
-                string liquipediaURI,
-                string bnetName,
-                string bnetProfileURI,
-                string mainRace,
-                string teamName,
-                string teamSiteURI,
-                string irlName,
-                string twitterName,
-                string country,
-                string twitterURI,
-                string tlName,
-                string tlProfileURI,
-                string fbName,
-                string fbURI,
-                string twitchName,
-                string twitchURI,
-                bool followed
-                )
+            public personObject(string liquipediaName,
+                                string liquipediaURI,
+                                string country,
+                                string bnetName,
+                                string bnetProfileURI,
+                                string mainRace,
+                                string teamName,
+                                string teamSiteURI,
+                                string irlName,
+                                string twitterName,
+                                string twitterURI,
+                                string tlName,
+                                string tlProfileURI,
+                                string fbName,
+                                string fbURI,
+                                string twitchName,
+                                string twitchURI,
+                                bool followed)
             {
                 uniqueID = liquipediaName;
             }
