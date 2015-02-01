@@ -152,7 +152,7 @@ namespace ConsoleApplication1
             //1. Load async the players teamliquid.net profile URL
             using (var client = new HttpClient())
             {
-                Uri playerDetailUri = new Uri(person.liquipediaURI);
+                Uri playerDetailUri = new Uri(person.liquipediaURI.ToString());
                     
                 var response = await client.GetAsync(playerDetailUri);
 
@@ -167,64 +167,98 @@ namespace ConsoleApplication1
                     //2. Scrape that page for the rest of the detail properties
                     //3. Fill those (switch like the main list scraper)
 
-                    person.tlForumURI = hrefFromTitle(infoBox_tags, "TeamLiquid.net Profile");
-                    person.tlName = tlNameFromURI(person.tlForumURI);
-                    person.twitterURI = hrefFromTitle(infoBox_tags, "Twitter");
-                    person.twitterName = twitterNameFromURI(person.twitterURI);
-                    person.fbURI = hrefFromTitle(infoBox_tags, "Facebook");
-                    person.fbName = fbNameFromURI(person.fbURI);
-                    person.twitchURI = hrefFromTitle(infoBox_tags, "Twitch Stream");
-                    person.twitchName = twitchIDfromURI(person.twitchURI);
-                    person.redditProfileURI = hrefFromTitle(infoBox_tags, "Reddit Profile");
-                    person.redditUsername = redditNameFromURI(person.redditProfileURI);
+                    person.tlForumURI = hrefUriFromTitle(infoBox_tags, "TeamLiquid.net Profile");
+                    if (person.tlForumURI != null) person.tlName = tlNameFromURI(person.tlForumURI);
+                    person.twitterURI = hrefUriFromTitle(infoBox_tags, "Twitter");
+                    if (person.twitterURI != null) person.twitterName = twitterNameFromURI(person.twitterURI);
+                    person.fbURI = hrefUriFromTitle(infoBox_tags, "Facebook");
+                    if (person.fbURI != null) person.fbName = fbNameFromURI(person.fbURI);
+                    person.twitchURI = hrefUriFromTitle(infoBox_tags, "Twitch Stream");
+                    if (person.twitchURI != null) person.twitchName = twitchIDfromURI(person.twitchURI);
+                    person.redditProfileURI = hrefUriFromTitle(infoBox_tags, "Reddit Profile");
+                    if (person.redditProfileURI != null) person.redditUsername = redditNameFromURI(person.redditProfileURI);
 
                     //There are some other tags, e.g., battle.net urls, that show up later under "external links"
                     //Since I really want to move on to pulling the posts from TL, I'm putting off grabbing that
                     //stuff until later.
+
+                    //If a Tl.net profile URI exists, scrape that page for information (how often posts, total posts (I think I should serialize this), etc.)
+                    if (person.tlForumURI != null)
+                    {
+                        string tlProfilePageString = await getHTMLStringFromUriAsync(client, person.tlForumURI);
+                    }
                 }
 
                     
             }
             //4. Display the details (will ultimately return)
-            Console.WriteLine(person.tlName + " on teamliquid: " + person.tlForumURI);
-            Console.WriteLine(person.twitterName + " on Twitter: " + person.twitterURI);
-            Console.WriteLine(person.fbName + " on Facebook: " + person.fbURI);
-            Console.WriteLine(person.twitchName + " on Twitch.tv: " + person.twitchURI); //updates the one scraped from the countries list, for uniformity
-            Console.WriteLine(person.redditUsername + " on Reddit: " + person.redditProfileURI);
+            if (person.tlName != null) Console.WriteLine(person.tlName + " on teamliquid: " + person.tlForumURI);
+            if (person.twitterName != null) Console.WriteLine(person.twitterName + " on Twitter: " + person.twitterURI);
+            if (person.fbName != null) Console.WriteLine(person.fbName + " on Facebook: " + person.fbURI);
+            if (person.twitchName != null) Console.WriteLine(person.twitchName + " on Twitch.tv: " + person.twitchURI); //updates the one scraped from the countries list, for uniformity
+            if (person.redditUsername != null) Console.WriteLine(person.redditUsername + " on Reddit: " + person.redditProfileURI);
             
         }
 
-        static string NameFromURI(string NameIdentifier, string URIStub, string fullURI)
+        private static async Task<string> getHTMLStringFromUriAsync(HttpClient client, Uri tlProfileUri)
         {
-            int URI_index = fullURI.IndexOf(URIStub);
-            if (URI_index == -1)
+            using (client)
             {
-                return "Name not found. Are you sure this is a " + NameIdentifier + "URI?";
-            }
-            else
-            {
-                int name_index = URI_index + URIStub.Length;
-                int name_length = fullURI.Length - name_index;
-                return removeCharCodes(fullURI.Substring(name_index, name_length));
+                var tlProfile_response = await client.GetAsync(tlProfileUri);
+
+                if (tlProfile_response.IsSuccessStatusCode)
+                {
+                    return await tlProfile_response.Content.ReadAsStringAsync();
+                }
+                else
+                {
+                    Console.WriteLine("Uri fetch failed.");
+                    return null;
+                }
             }
         }
 
-        static string twitterNameFromURI(string twitterURI)
+        static string NameFromURI(string NameIdentifier, string URIStub, Uri fullURI)
+        {
+            if (fullURI != null)
+            {
+                string UriString = fullURI.ToString();
+                int URI_index = UriString.IndexOf(URIStub);
+                if (URI_index == -1)
+                {
+                    Console.WriteLine("Name not found. Are you sure this is a " + NameIdentifier + "URI?");
+                    return null;
+                }
+                else
+                {
+                    int name_index = URI_index + URIStub.Length;
+                    int name_length = UriString.Length - name_index;
+                    return removeCharCodes(UriString.Substring(name_index, name_length));
+                }
+            }
+            else
+            {
+                Console.WriteLine("Uri was null. Should you even be calling this?");
+                return null;
+            }
+        }
+
+        static string twitterNameFromURI(Uri twitterURI)
         {
             return NameFromURI("Twiter Profile", "twitter.com/", twitterURI);
         }
 
-        static string tlNameFromURI(string tlProfileURI)
+        static string tlNameFromURI(Uri tlProfileURI)
         {
             return NameFromURI("Teamliquid Profile", "teamliquid.net/forum/profile.php?user=", tlProfileURI);
         }
 
-        static string fbNameFromURI(string fbProfileURI)
+        static string fbNameFromURI(Uri fbProfileURI)
         {
             return NameFromURI("Facebook Profile", "facebook.com/", fbProfileURI);
         }
 
-        static string redditNameFromURI(string redditProfileURI)
+        static string redditNameFromURI(Uri redditProfileURI)
         {
             return NameFromURI("Reddit Profile", "reddit.com/user/", redditProfileURI);
         }
@@ -251,7 +285,7 @@ namespace ConsoleApplication1
             }
         }
 
-        public static string hrefFromTitle(string sourceString, string title_name)
+        public static Uri hrefUriFromTitle(string sourceString, string title_name)
         {
             int title_index = sourceString.IndexOf("title=\"" + title_name + "\"");
             if (title_index != -1)
@@ -260,11 +294,12 @@ namespace ConsoleApplication1
                 int href_start = sourceString.IndexOf("\"", tag_index) + 1;
                 int href_end = sourceString.IndexOf("\"", href_start);
                 int href_length = href_end - href_start;
-                return sourceString.Substring(href_start, href_length);
+                return new Uri(sourceString.Substring(href_start, href_length));
             }
             else
             {
-                return ("No " + title_name + " found!");
+                Console.WriteLine("No " + title_name + " found!");
+                return null;
             }
         }
 
@@ -521,7 +556,7 @@ namespace ConsoleApplication1
                                             {
                                                 case 1:
                                                     tempPerson.liquipediaName = td_info;
-                                                    tempPerson.liquipediaURI = "http://wiki.teamliquid.net" + grabHREF(td_tags);
+                                                    tempPerson.liquipediaURI = new Uri("http://wiki.teamliquid.net" + grabHREF(td_tags));
                                                     break;
                                                 case 2:
                                                     tempPerson.irlName = td_info;
@@ -538,7 +573,15 @@ namespace ConsoleApplication1
                                                 case 6:
                                                     //This will grab twitch IDs, but will need to grab own3d IDs or, e.g. day9.tv
                                                     //I also noticed MarineKing's twitch has an extra slash. Not sure why
-                                                    tempPerson.twitchName = twitchIDfromURI(grabHREF(td_tags));
+                                                    string hrefTag = grabHREF(td_tags);
+                                                    if (hrefTag != null)
+                                                    {
+                                                        tempPerson.twitchName = twitchIDfromURI(new Uri(hrefTag));
+                                                    }
+                                                    else
+                                                    {
+                                                        tempPerson.twitchName = null;
+                                                    }
                                                     break;
                                                 default:
                                                     //Console.WriteLine("Oh Gawd. Something has gone horribly wrong. i = " + i.ToString());
@@ -620,8 +663,8 @@ namespace ConsoleApplication1
         {
             return inputString.Replace("&#160;","")
                               .Replace("%20", " ")
-                              .Replace("%5B", "[")
-                              .Replace("%5D", "]");
+                              .Replace("%5B", "[") //You can thank Day[9] for making me add these two
+                              .Replace("%5D", "]"); // ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
         }
 
         public static int nextTDstart(string searchString, int startPosition)
@@ -657,39 +700,44 @@ namespace ConsoleApplication1
         public static string grabHREF(string sourceString)
         {
             int hrefLocation = sourceString.IndexOf("href");
-            int urlStart = new int();
-
+            int uriStart = new int();
+            
             if (hrefLocation != -1)
             {
-                urlStart = sourceString.IndexOf("\"", hrefLocation) + 1;
+                uriStart = sourceString.IndexOf("\"", hrefLocation) + 1;
             }
-            else urlStart = 0;
+            else uriStart = 0;
 
-            int urlEnd = new int();
+            int uriEnd = new int();
 
-            if (urlStart != 0)
+            if (uriStart != 0)
             {
-                urlEnd = sourceString.IndexOf("\"", urlStart);
+                uriEnd = sourceString.IndexOf("\"", uriStart);
             }
-            else urlEnd = -1;
+            else uriEnd = -1;
 
-            int urlLength = urlEnd - urlStart;
+            int uriLength = uriEnd - uriStart;
 
-            if ((hrefLocation != -1) && (urlStart != 0) && (urlEnd != -1) && (urlStart < urlEnd))
+            if ((hrefLocation != -1) && (uriStart != 0) && (uriEnd != -1) && (uriStart < uriEnd))
             {
-                return sourceString.Substring(urlStart, urlLength);
+                return sourceString.Substring(uriStart, uriLength);
             }
-            else return "No link tags found";
+            else
+            {
+                //Console.WriteLine("No link tags found!"); //This was really annoying before I commented it out.
+                return null;
+            }
         }
 
-        public static string twitchIDfromURI(string sourceString)
+        public static string twitchIDfromURI(Uri sourceUri)
         {
-            int idStart = sourceString.IndexOf("twitch.tv/") + 10;
+            string sourceUriString = sourceUri.ToString();
+            int idStart = sourceUriString.IndexOf("twitch.tv/") + 10;
             int idEnd = new int();
             
             if (idStart != 9)
             {
-                idEnd = sourceString.Length;
+                idEnd = sourceUriString.Length;
             }
             else idEnd = -1;
 
@@ -697,7 +745,7 @@ namespace ConsoleApplication1
 
             if ((idStart != 9) && (idEnd != -1) && (idStart < idEnd))
             {
-                return sourceString.Substring(idStart, idLength);
+                return sourceUriString.Substring(idStart, idLength);
             }
             else return "No Twitch ID found";       
         }
@@ -712,22 +760,22 @@ namespace ConsoleApplication1
             }
 
             public personObject(string liquipediaName,
-                                string liquipediaURI,
+                                Uri liquipediaURI,
                                 string country,
                                 string bnetName,
-                                string bnetProfileURI,
+                                Uri bnetProfileURI,
                                 string mainRace,
                                 string teamName,
-                                string teamSiteURI,
+                                Uri teamSiteURI,
                                 string irlName,
                                 string twitterName,
-                                string twitterURI,
+                                Uri twitterURI,
                                 string tlName,
-                                string tlProfileURI,
+                                Uri tlProfileURI,
                                 string fbName,
-                                string fbURI,
+                                Uri fbURI,
                                 string twitchName,
-                                string twitchURI,
+                                Uri twitchURI,
                                 bool followed)
             {
                 uniqueID = liquipediaName;
@@ -743,15 +791,15 @@ namespace ConsoleApplication1
                 set { uniqueID = value;}
             }
             
-            private string liquipediaURIvalue;
-            public string liquipediaURI
+            private Uri liquipediaURIvalue;
+            public Uri liquipediaURI
             {
                 get { return liquipediaURIvalue; }
                 set { liquipediaURIvalue = value; }
             }
 
-            private string tlForumURIvalue;
-            public string tlForumURI
+            private Uri tlForumURIvalue;
+            public Uri tlForumURI
             {
                 get { return tlForumURIvalue;}
                 set { tlForumURIvalue = value;}
@@ -764,8 +812,8 @@ namespace ConsoleApplication1
                 set { bnetNamevalue = value; }
             }
 
-            private string bnetProfileURIvalue;
-            public string bnetProfileURI
+            private Uri bnetProfileURIvalue;
+            public Uri bnetProfileURI
             {
                 get { return bnetProfileURIvalue; }
                 set { bnetProfileURIvalue = value; }
@@ -785,8 +833,8 @@ namespace ConsoleApplication1
                 set { teamNamevalue = value; }
             }
 
-            private string teamSiteURIvalue;
-            public string teamSiteURI
+            private Uri teamSiteURIvalue;
+            public Uri teamSiteURI
             {
                 get { return teamSiteURIvalue; }
                 set { teamSiteURIvalue = value; }
@@ -813,8 +861,8 @@ namespace ConsoleApplication1
                 set { countryvalue = value; }
             }
 
-            private string twitterURIvalue;
-            public string twitterURI
+            private Uri twitterURIvalue;
+            public Uri twitterURI
             {
                 get { return twitterURIvalue; }
                 set { twitterURIvalue = value; }
@@ -827,8 +875,8 @@ namespace ConsoleApplication1
                 set { tlNamevalue = value; }
             }
 
-            private string redditProfileURIValue;
-            public string redditProfileURI
+            private Uri redditProfileURIValue;
+            public Uri redditProfileURI
             {
                 get { return redditProfileURIValue; }
                 set { redditProfileURIValue = value; }
@@ -848,8 +896,8 @@ namespace ConsoleApplication1
                 set { fbNamevalue = value; }
             }
 
-            private string fbURIvalue;
-            public string fbURI
+            private Uri fbURIvalue;
+            public Uri fbURI
             {
                 get { return fbURIvalue; }
                 set { fbURIvalue = value; }
@@ -862,8 +910,8 @@ namespace ConsoleApplication1
                 set { twitchNamevalue = value; }
             }
 
-            private string twitchURIvalue;
-            public string twitchURI
+            private Uri twitchURIvalue;
+            public Uri twitchURI
             {
                 get { return twitchURIvalue; }
                 set { twitchURIvalue = value; }
