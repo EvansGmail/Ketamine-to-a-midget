@@ -129,64 +129,143 @@ namespace ConsoleApplication1
 
         }
 
-        static async Task extractPersonDetail(string personForDetailView, List<personObject> tlPeople)
+        static personObject personObjectFromString(string personString, List<personObject> tlPeople)
         {
-            var personToDetailObj = (from u in tlPeople
-                                     where u.liquipediaName.ToUpper() == personForDetailView
-                                     select u);
-            if (personToDetailObj.FirstOrDefault().Equals(null))
+            var person = (from u in tlPeople
+                          where u.liquipediaName.ToUpper() == personString.ToUpper()
+                          select u);
+            if (person.FirstOrDefault().Equals(null))
             {
                 Console.WriteLine("Person not found!");
-                return;
+                return null;
             }
             else
             {
-                personObject person = personToDetailObj.FirstOrDefault(); 
-                
-                //1. Load async the players teamliquid.net profile URL
-                using (var client = new HttpClient())
-                {
-                    Uri playerDetailUri = new Uri(person.liquipediaURI);
+                return person.FirstOrDefault();
+            }
+        }
+
+        static async Task extractPersonDetail(string personForDetailView, List<personObject> tlPeople)
+        {
+            personObject person = personObjectFromString(personForDetailView, tlPeople);
+
+            //1. Load async the players teamliquid.net profile URL
+            using (var client = new HttpClient())
+            {
+                Uri playerDetailUri = new Uri(person.liquipediaURI);
                     
-                    var response = await client.GetAsync(playerDetailUri);
+                var response = await client.GetAsync(playerDetailUri);
 
-                    if (response.IsSuccessStatusCode)
-                    {
-                        UTF8Encoding utf8 = new UTF8Encoding();
-                        //string responseString = utf8.GetString(response);
-                        string responseString = await response.Content.ReadAsStringAsync();
+                if (response.IsSuccessStatusCode)
+                {
+                    UTF8Encoding utf8 = new UTF8Encoding();
+                    //string responseString = utf8.GetString(response);
+                    string responseString = await response.Content.ReadAsStringAsync();
 
-                        int infoBox_index = responseString.IndexOf("<div class=\"infobox-center infobox-icons\">");
-                        int infoBox_end = responseString.IndexOf("</div>", infoBox_index) + 6;
-                        int infoBox_length = infoBox_end - infoBox_index;
-                        string infoBox_tags = responseString.Substring(infoBox_index, infoBox_length);
-                        
-                        person.tlForumURI = hrefFromTitle(infoBox_tags, "Teamliquid.Net Profile");
-                        person.twitterURI = hrefFromTitle(infoBox_tags, "Twitter");
-                        person.fbURI = hrefFromTitle(infoBox_tags, "Facebook");
-                        person.twitchURI = hrefFromTitle(infoBox_tags, "Twitch Stream");
-                        person.redditProfileURI = hrefFromTitle(infoBox_tags, "Reddit Profile");
-
-                        //There are some other tags, e.g., battle.net urls, that show up later under "external links"
-                        //Since I really want to move on to pulling the posts from TL, I'm putting off grabbing that
-                        //stuff until later.
-                    }
+                    string infoBox_tags = StringFromTag(responseString, "<div class=\"infobox-center infobox-icons\">", "</div>");
 
                     //2. Scrape that page for the rest of the detail properties
                     //3. Fill those (switch like the main list scraper)
+
+                    person.tlForumURI = hrefFromTitle(infoBox_tags, "TeamLiquid.net Profile");
+                    person.tlName = tlNameFromURI(person.tlForumURI);
+                    person.twitterURI = hrefFromTitle(infoBox_tags, "Twitter");
+                    person.twitterName = twitterNameFromURI(person.twitterURI);
+                    person.fbURI = hrefFromTitle(infoBox_tags, "Facebook");
+                    person.fbName = fbNameFromURI(person.fbURI);
+                    person.twitchURI = hrefFromTitle(infoBox_tags, "Twitch Stream");
+                    person.twitchName = twitchIDfromURI(person.twitchURI);
+                    person.redditProfileURI = hrefFromTitle(infoBox_tags, "Reddit Profile");
+                    person.redditUsername = redditNameFromURI(person.redditProfileURI);
+
+                    //There are some other tags, e.g., battle.net urls, that show up later under "external links"
+                    //Since I really want to move on to pulling the posts from TL, I'm putting off grabbing that
+                    //stuff until later.
                 }
-                //4. Display the details (will ultimately return)
+
+                    
+            }
+            //4. Display the details (will ultimately return)
+            Console.WriteLine(person.tlName + " on teamliquid: " + person.tlForumURI);
+            Console.WriteLine(person.twitterName + " on Twitter: " + person.twitterURI);
+            Console.WriteLine(person.fbName + " on Facebook: " + person.fbURI);
+            Console.WriteLine(person.twitchName + " on Twitch.tv: " + person.twitchURI); //updates the one scraped from the countries list, for uniformity
+            Console.WriteLine(person.redditUsername + " on Reddit: " + person.redditProfileURI);
+            
+        }
+
+        static string NameFromURI(string NameIdentifier, string URIStub, string fullURI)
+        {
+            int URI_index = fullURI.IndexOf(URIStub);
+            if (URI_index == -1)
+            {
+                return "Name not found. Are you sure this is a " + NameIdentifier + "URI?";
+            }
+            else
+            {
+                int name_index = URI_index + URIStub.Length;
+                int name_length = fullURI.Length - name_index;
+                return fullURI.Substring(name_index, name_length);
+            }
+        }
+
+        static string twitterNameFromURI(string twitterURI)
+        {
+            return NameFromURI("Twiter Profile", "twitter.com/", twitterURI);
+        }
+
+        static string tlNameFromURI(string tlProfileURI)
+        {
+            return NameFromURI("Teamliquid Profile", "teamliquid.net/forum/profile.php?user=", tlProfileURI);
+        }
+
+        static string fbNameFromURI(string fbProfileURI)
+        {
+            return NameFromURI("Facebook Profile", "facebook.com/", fbProfileURI);
+        }
+
+        static string redditNameFromURI(string redditProfileURI)
+        {
+            return NameFromURI("Reddit Profile", "reddit.com/user/", redditProfileURI);
+        }
+
+        public static string StringFromTag(string sourceString, string tagStart, string tagClose)
+        {
+            int tagStart_index = sourceString.IndexOf(tagStart);
+            if (tagStart_index == -1)
+            {
+                return "Opening tag not found!";
+            }
+            else
+            {
+                int tagEnd_index = sourceString.IndexOf(tagClose, tagStart_index) + tagClose.Length;
+                if (tagEnd_index == -1)
+                {
+                    return "Closing tag not found! (Did you close a different tag or is the HTML malformed?";
+                }
+                else
+                {
+                    int tag_length = tagEnd_index - tagStart_index;
+                    return sourceString.Substring(tagStart_index, tag_length);
+                }
             }
         }
 
         public static string hrefFromTitle(string sourceString, string title_name)
         {
             int title_index = sourceString.IndexOf("title=\"" + title_name + "\"");
-            int tag_index = sourceString.LastIndexOf("<a href=\"", title_index);
-            int href_start = sourceString.IndexOf("\"", tag_index);
-            int href_end = sourceString.IndexOf("\"", href_start);
-            int href_length = href_end - href_start;
-            return sourceString.Substring(href_start, href_length); 
+            if (title_index != -1)
+            {
+                int tag_index = sourceString.LastIndexOf("<a href=\"", title_index);
+                int href_start = sourceString.IndexOf("\"", tag_index) + 1;
+                int href_end = sourceString.IndexOf("\"", href_start);
+                int href_length = href_end - href_start;
+                return sourceString.Substring(href_start, href_length);
+            }
+            else
+            {
+                return ("No " + title_name + " found!");
+            }
         }
 
         private static void unfollowAndStopSerializing(string personToUnfollow, List<personObject> tlPeople, string fileName)
