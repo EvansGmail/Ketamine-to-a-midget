@@ -895,8 +895,45 @@ namespace ConsoleApplication1
                 set { tlPostListValue = value;}
             }
         }
+        
+        public class tlCachedPostPage //A single cached post page; collected by Objects and in one master list
+        {
+            public tlCachedPostPage()
+            {
+                //Empty container required to compile
+            }
 
-        public class tlPostObject
+            public tlCachedPostPage(Uri cachedPageLocation,
+                                    Uri cachedPageRemoteUri,
+                                    List<tlPostObject> posts)
+            {
+                //No unique ID at this point... maybe some substring of the URL?
+            }
+            
+            private Uri cachedPageLocationValue;
+            public Uri cachedPageLocation
+            {
+                get { return cachedPageLocationValue; }
+                set { cachedPageLocationValue = value; }
+            }
+
+            private Uri cachedPageRemoteUriValue;
+            public Uri cachedPageRemoteUri
+            {
+                get { return cachedPageRemoteUriValue; }
+                set { cachedPageRemoteUriValue = value; }
+            }
+
+            private List<tlPostObject> postsValue;
+            public List<tlPostObject> posts
+            {
+                get { return postsValue; }
+                set { postsValue = value; }
+            }
+        }
+    
+
+        public class tlPostObject //tlPostObjects are references to specific Comments on TeamLiquid.
         {
             public tlPostObject()
             {
@@ -909,6 +946,7 @@ namespace ConsoleApplication1
                                 int commentNumber,
                                 string postHTMLContent
                                 //DateTime postDateTime
+                                //CachePageObject (will be shared with all other postObjects on the same page)
                                 )
             {
                 //No Unique ID at this point. Might need an index later.   
