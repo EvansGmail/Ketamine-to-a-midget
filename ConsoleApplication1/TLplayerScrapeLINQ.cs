@@ -45,6 +45,7 @@ namespace ConsoleApplication1
                                         "D. Print the list, as sorted \n" +
                                         "E. Print the followed user list \n" +
                                         "F. Print player detail \n" +
+                                        "G. Print player TL posts Summary \n" +
                                         "Q. Quit");
 
                 Console.WriteLine();
@@ -117,6 +118,14 @@ namespace ConsoleApplication1
                         string personForDetailView = Console.ReadLine().ToUpper();
                         extractPersonDetail(personForDetailView, tlPeople).Wait();
                         break;
+                    case "G":
+                        Console.WriteLine("Type the name of the person whose TL post details you want to see:");
+                        Console.WriteLine();
+                        string tlForumNameForPosts = Console.ReadLine().ToUpper();
+                        personObject personForPosts = personObjectFromString(tlForumNameForPosts, tlPeople);
+                        HttpClient client2 = new HttpClient();
+                        grabTlPosts(personForPosts, client2).Wait();
+                        break;
                     case "Q":
                         quitThisGame = 1;
                         break;
@@ -186,10 +195,11 @@ namespace ConsoleApplication1
                     if (person.tlForumURI != null)
                     {
                         string tlProfilePageString = await getHTMLStringFromUriAsync(client, person.tlForumURI);
+                        string numPostsTags = StringFromTag(tlProfilePageString, "<a href='search.php?q=&amp;t=c&amp;f=-1&u=", "</a>");
+                        string numPosts = InnerText(numPostsTags, 0, numPostsTags.Length);
+                        person.tlTotalPosts = Convert.ToInt32(numPosts);
                     }
-                }
-
-                    
+                }    
             }
             //4. Display the details (will ultimately return)
             if (person.tlName != null) Console.WriteLine(person.tlName + " on teamliquid: " + person.tlForumURI);
@@ -197,7 +207,77 @@ namespace ConsoleApplication1
             if (person.fbName != null) Console.WriteLine(person.fbName + " on Facebook: " + person.fbURI);
             if (person.twitchName != null) Console.WriteLine(person.twitchName + " on Twitch.tv: " + person.twitchURI); //updates the one scraped from the countries list, for uniformity
             if (person.redditUsername != null) Console.WriteLine(person.redditUsername + " on Reddit: " + person.redditProfileURI);
-            
+            if (person.tlTotalPosts != 0) Console.WriteLine("Total posts on TeamLiquid.net: " + person.tlTotalPosts);
+        }
+
+        static async Task grabTlPosts(personObject person, HttpClient client)
+        {
+            Uri postsPage = tlPostUriFromTlUsername(person.tlName);
+            string tlPostsResultPage = await getHTMLStringFromUriAsync(client, postsPage);
+            string postsBlock = StringFromTag(tlPostsResultPage, "<tr><td class='srch_res1'>", "</td></tr></TABLE>");
+            int readPosition = 0;
+            int threadCount = 0;
+            int postCount = 0;
+            string srch_res_toggle = "1";
+            person.tlPostList = new List<tlPostObject>();
+
+            while (readPosition != -1 && readPosition < postsBlock.Length && postCount < 10)
+            {
+                //Have to read through by TDs, but add list items by individual links
+                //So, keep track of post general information by TD, then add it all at each link
+                //(So there will be a while loop in this while loop)
+                int threadBlock_start = postsBlock.IndexOf("<tr><td class='srch_res", readPosition);
+                int threadBlock_end = postsBlock.IndexOf("</td></tr>", threadBlock_start) + "</td></tr>".Length;
+                string threadBlock = postsBlock.Substring(threadBlock_start, threadBlock_end - threadBlock_start);
+                string post_forum_block = StringFromTag(threadBlock, "<td class='srch_res" + srch_res_toggle + "'><font size='-2' color='#808080'>", "</font>");
+                string post_forum = InnerText(post_forum_block, 0, post_forum_block.Length).TrimEnd(":".ToCharArray());
+                string thread_title_block = StringFromTag(threadBlock, "<a class='sl' name='srl' href=", "</a>");
+                string thread_title = InnerText(thread_title_block, 0, thread_title_block.Length);
+                string thread_Uri_stub = "http://www.teamliquid.net" + grabHREF(thread_title_block);
+
+                //Process thread posts here
+                int post_list_block_start = threadBlock.IndexOf("<a class='sls' name='srl' href='viewpost.php?post_id=");
+                readPosition = post_list_block_start;
+                int post_list_block_end = threadBlock.IndexOf("</td>", post_list_block_start);
+                string post_list_block = threadBlock.Substring(post_list_block_start, post_list_block_end - post_list_block_start);
+                int subThread_position = 0;
+
+                while (subThread_position != -1)
+                {
+                    int postLink_start = post_list_block.IndexOf("<a class='sls' name='srl' href='viewpost.php?post_id=", subThread_position);
+                    int postLink_end = post_list_block.IndexOf("</a>", postLink_start) + "</a>".Length;
+                    int postLink_length = postLink_end - postLink_start;
+                    string postLink_tags = post_list_block.Substring(postLink_start, postLink_length);
+                    Uri postLink = new Uri("http://www.teamliquid.net/forum/" + grabHREF(postLink_tags));
+                    int postNumber = Convert.ToInt32(InnerText(postLink_tags, 0, postLink_tags.Length));
+                    readPosition = postLink_end + 1;
+                    subThread_position = post_list_block.IndexOf("<a class='sls' name='srl' href='viewpost.php?post_id=", postLink_end);
+                    person.tlPostList.Add(new tlPostObject(thread_title,
+                                                           post_forum,
+                                                           postLink,
+                                                           postNumber,
+                                                           ""//Working on this. Limit to 10 at a time or something 
+                                                           ));//Date and time don't come from this page, either
+                    Console.WriteLine(thread_title + ", " + postNumber);
+                    postCount++;
+                }
+
+                if (srch_res_toggle == "1")
+                    {
+                        srch_res_toggle = "2";
+                    }
+                    else
+                    {
+                        srch_res_toggle = "1";
+                    }
+                threadCount++;
+            }
+            return;
+        }
+
+        static Uri tlPostUriFromTlUsername(string tlUsername)
+        {
+            return new Uri("http://www.teamliquid.net/forum/search.php?q=&t=c&f=-1&u=" + tlUsername + "&gb=date&d=");
         }
 
         private static async Task<string> getHTMLStringFromUriAsync(HttpClient client, Uri tlProfileUri)
@@ -272,7 +352,7 @@ namespace ConsoleApplication1
             }
             else
             {
-                int tagEnd_index = sourceString.IndexOf(tagClose, tagStart_index) + tagClose.Length;
+                int tagEnd_index = sourceString.IndexOf(tagClose, tagStart_index + tagStart.Length) + tagClose.Length;
                 if (tagEnd_index == -1)
                 {
                     return "Closing tag not found! (Did you close a different tag or is the HTML malformed?";
@@ -700,6 +780,7 @@ namespace ConsoleApplication1
         public static string grabHREF(string sourceString)
         {
             int hrefLocation = sourceString.IndexOf("href");
+            string quoteType = "\"";
             int uriStart = new int();
             
             if (hrefLocation != -1)
@@ -708,11 +789,17 @@ namespace ConsoleApplication1
             }
             else uriStart = 0;
 
+            if ((hrefLocation != -1) && ((uriStart > hrefLocation + 10) || (uriStart == 0)))
+            {
+                uriStart = sourceString.IndexOf("'", hrefLocation) + 1;
+                quoteType = "'";
+            }
+
             int uriEnd = new int();
 
-            if (uriStart != 0)
+            if ((uriStart < hrefLocation + 10) && (uriStart != 0))
             {
-                uriEnd = sourceString.IndexOf("\"", uriStart);
+                uriEnd = sourceString.IndexOf(quoteType, uriStart);
             }
             else uriEnd = -1;
 
@@ -772,11 +859,13 @@ namespace ConsoleApplication1
                                 Uri twitterURI,
                                 string tlName,
                                 Uri tlProfileURI,
+                                int tlTotalPosts,
                                 string fbName,
                                 Uri fbURI,
                                 string twitchName,
                                 Uri twitchURI,
-                                bool followed)
+                                bool followed,
+                                List<tlPostObject> tlPostList)
             {
                 uniqueID = liquipediaName;
             }
@@ -875,6 +964,13 @@ namespace ConsoleApplication1
                 set { tlNamevalue = value; }
             }
 
+            private int tlTotalPostsValue;
+            public int tlTotalPosts
+            {
+                get { return tlTotalPostsValue; }
+                set { tlTotalPostsValue = value; }
+            }
+
             private Uri redditProfileURIValue;
             public Uri redditProfileURI
             {
@@ -954,6 +1050,75 @@ namespace ConsoleApplication1
                 Console.WriteLine(this.twitchName);
                 Console.WriteLine();
             }
+
+            private List<tlPostObject> tlPostListValue;
+            public List<tlPostObject> tlPostList
+            {
+                get { return tlPostListValue; }
+                set { tlPostListValue = value;}
+            }
+        }
+
+        public class tlPostObject
+        {
+            public tlPostObject()
+            {
+                //Empty container required to compile
+            }
+
+            public tlPostObject(string threadTitle,
+                                string threadSection,
+                                Uri commentUri,
+                                int commentNumber,
+                                string postContent
+                                //DateTime postDateTime
+                                )
+            {
+                //No Unique ID at this point. Might need an index later.   
+            }
+
+            private string threadTitleValue;
+            public string threadTitle
+            {
+                get { return threadTitleValue; }
+                set { threadTitleValue = value; }
+            }
+
+            private string threadSectionValue;
+            public string threadSection
+            {
+                get { return threadSectionValue; }
+                set { threadSectionValue = value; }
+            }
+
+            private Uri commentUriValue;
+            public Uri commentUri
+            {
+                get { return commentUriValue; }
+                set { commentUriValue = value; }
+            }
+
+            private int commentNumberValue;
+            public int commentNumber
+            {
+                get { return commentNumberValue; }
+                set { commentNumberValue = value; }
+            }
+
+            private string postContentValue;
+            public string postConent
+            {
+                get { return postContentValue; }
+                set { postContentValue = value; }
+            }
+
+            //private DateTime postDateTimeValue;
+            //public DateTime postDateTime
+            //{
+            //    get { return postDateTimeValue; }
+            //    set { postDateTimeValue = value; }
+            //}
+
         }
     }
 }
