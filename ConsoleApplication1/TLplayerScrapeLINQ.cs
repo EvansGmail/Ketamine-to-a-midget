@@ -8,6 +8,7 @@ using System.Net.Http;
 using System.IO;
 using System.Runtime.Serialization.Formatters.Binary;
 using System.Runtime.Serialization;
+using HTMLUtils;
 
 namespace ConsoleApplication1
 {
@@ -25,7 +26,7 @@ namespace ConsoleApplication1
             List<personObject> tlPeople = new List<personObject>();
             
             //Most of the functionality is hidden in RunAsync right now. It grabs all the web data.
-            RunAsync(tlPeople).Wait();
+            ScrapeGlobalPlayerLists(tlPeople).Wait();
             
             //Default ordering is by Liquipedia Name
             tlPeople = tlPeople.OrderBy(o => o.liquipediaName).ToList();
@@ -171,20 +172,20 @@ namespace ConsoleApplication1
                     //string responseString = utf8.GetString(response);
                     string responseString = await response.Content.ReadAsStringAsync();
 
-                    string infoBox_tags = StringFromTag(responseString, "<div class=\"infobox-center infobox-icons\">", "</div>");
+                    string infoBox_tags = HTMLUtilities.StringFromTag(responseString, "<div class=\"infobox-center infobox-icons\">", "</div>");
 
                     //2. Scrape that page for the rest of the detail properties
                     //3. Fill those (switch like the main list scraper)
 
-                    person.tlForumURI = hrefUriFromTitle(infoBox_tags, "TeamLiquid.net Profile");
+                    person.tlForumURI = HTMLUtilities.hrefUriFromTitle(infoBox_tags, "TeamLiquid.net Profile");
                     if (person.tlForumURI != null) person.tlName = tlNameFromURI(person.tlForumURI);
-                    person.twitterURI = hrefUriFromTitle(infoBox_tags, "Twitter");
+                    person.twitterURI = HTMLUtilities.hrefUriFromTitle(infoBox_tags, "Twitter");
                     if (person.twitterURI != null) person.twitterName = twitterNameFromURI(person.twitterURI);
-                    person.fbURI = hrefUriFromTitle(infoBox_tags, "Facebook");
+                    person.fbURI = HTMLUtilities.hrefUriFromTitle(infoBox_tags, "Facebook");
                     if (person.fbURI != null) person.fbName = fbNameFromURI(person.fbURI);
-                    person.twitchURI = hrefUriFromTitle(infoBox_tags, "Twitch Stream");
+                    person.twitchURI = HTMLUtilities.hrefUriFromTitle(infoBox_tags, "Twitch Stream");
                     if (person.twitchURI != null) person.twitchName = twitchIDfromURI(person.twitchURI);
-                    person.redditProfileURI = hrefUriFromTitle(infoBox_tags, "Reddit Profile");
+                    person.redditProfileURI = HTMLUtilities.hrefUriFromTitle(infoBox_tags, "Reddit Profile");
                     if (person.redditProfileURI != null) person.redditUsername = redditNameFromURI(person.redditProfileURI);
 
                     //There are some other tags, e.g., battle.net urls, that show up later under "external links"
@@ -194,9 +195,9 @@ namespace ConsoleApplication1
                     //If a Tl.net profile URI exists, scrape that page for information (how often posts, total posts (I think I should serialize this), etc.)
                     if (person.tlForumURI != null)
                     {
-                        string tlProfilePageString = await getHTMLStringFromUriAsync(client, person.tlForumURI);
-                        string numPostsTags = StringFromTag(tlProfilePageString, "<a href='search.php?q=&amp;t=c&amp;f=-1&u=", "</a>");
-                        string numPosts = InnerText(numPostsTags, 0, numPostsTags.Length);
+                        string tlProfilePageString = await HTMLUtilities.getHTMLStringFromUriAsync(client, person.tlForumURI);
+                        string numPostsTags = HTMLUtilities.StringFromTag(tlProfilePageString, "<a href='search.php?q=&amp;t=c&amp;f=-1&u=", "</a>");
+                        string numPosts = HTMLUtilities.InnerText(numPostsTags, 0, numPostsTags.Length);
                         person.tlTotalPosts = Convert.ToInt32(numPosts);
                     }
                 }    
@@ -213,8 +214,8 @@ namespace ConsoleApplication1
         static async Task grabTlPosts(personObject person, HttpClient client, int postsToGrab)
         {
             Uri postsPage = tlPostUriFromTlUsername(person.tlName);
-            string tlPostsResultPage = await getHTMLStringFromUriAsync(client, postsPage);
-            string postsBlock = StringFromTag(tlPostsResultPage, "<tr><td class='srch_res1'>", "</td></tr></TABLE>");
+            string tlPostsResultPage = await HTMLUtilities.getHTMLStringFromUriAsync(client, postsPage);
+            string postsBlock = HTMLUtilities.StringFromTag(tlPostsResultPage, "<tr><td class='srch_res1'>", "</td></tr></TABLE>");
             int readPosition = 0;
             int threadCount = 0;
             int postCount = 0;
@@ -230,11 +231,11 @@ namespace ConsoleApplication1
                 int threadBlock_end = postsBlock.IndexOf("</td></tr>", threadBlock_start) + "</td></tr>".Length;
                 readPosition = threadBlock_start;
                 string threadBlock = postsBlock.Substring(threadBlock_start, threadBlock_end - threadBlock_start);
-                string post_forum_block = StringFromTag(threadBlock, "<td class='srch_res" + srch_res_toggle + "'><font size='-2' color='#808080'>", "</font>");
-                string post_forum = InnerText(post_forum_block, 0, post_forum_block.Length).TrimEnd(":".ToCharArray());
-                string thread_title_block = StringFromTag(threadBlock, "<a class='sl' name='srl' href=", "</a>");
-                string thread_title = InnerText(thread_title_block, 0, thread_title_block.Length);
-                string thread_Uri_stub = "http://www.teamliquid.net" + grabHREF(thread_title_block);
+                string post_forum_block = HTMLUtilities.StringFromTag(threadBlock, "<td class='srch_res" + srch_res_toggle + "'><font size='-2' color='#808080'>", "</font>");
+                string post_forum = HTMLUtilities.InnerText(post_forum_block, 0, post_forum_block.Length).TrimEnd(":".ToCharArray());
+                string thread_title_block = HTMLUtilities.StringFromTag(threadBlock, "<a class='sl' name='srl' href=", "</a>");
+                string thread_title = HTMLUtilities.InnerText(thread_title_block, 0, thread_title_block.Length);
+                string thread_Uri_stub = "http://www.teamliquid.net" + HTMLUtilities.grabHREF(thread_title_block);
                 Console.WriteLine(thread_title);
                 Console.WriteLine();
 
@@ -253,8 +254,8 @@ namespace ConsoleApplication1
                     int postLink_end = post_list_block.IndexOf("</a>", postLink_start) + "</a>".Length;
                     int postLink_length = postLink_end - postLink_start;
                     string postLink_tags = post_list_block.Substring(postLink_start, postLink_length);
-                    Uri postLink = new Uri("http://www.teamliquid.net/forum/" + grabHREF(postLink_tags));
-                    int postNumber = Convert.ToInt32(InnerText(postLink_tags, 0, postLink_tags.Length));
+                    Uri postLink = new Uri("http://www.teamliquid.net/forum/" + HTMLUtilities.grabHREF(postLink_tags));
+                    int postNumber = Convert.ToInt32(HTMLUtilities.InnerText(postLink_tags, 0, postLink_tags.Length));
                     subThread_position = post_list_block.IndexOf("<a class='sls' name='srl' href='viewpost.php?post_id=", postLink_end);
                     //Experimental: Grab the actual post text here. This could severely bog down viewing post history;
                     //...but the post history is pretty useless otherwise. Even displaying just one comment is better
@@ -305,116 +306,33 @@ namespace ConsoleApplication1
 
         private static async Task<string> grabThreadPageHTMLAsync(HttpClient client, Uri postLink, int postNumber)
         {
-            string threadPage = await getHTMLStringFromUriAsync(client, postLink);
-            string commentBlock = StringFromTag(threadPage, "<tr><td colspan=\"2\"><a name=\"" + postNumber.ToString() + "\">", "</table><br></td></tr>");
+            string threadPage = await HTMLUtilities.getHTMLStringFromUriAsync(client, postLink);
+            string commentBlock = HTMLUtilities.StringFromTag(threadPage, "<tr><td colspan=\"2\"><a name=\"" + postNumber.ToString() + "\">", "</table><br></td></tr>");
             //That StringFromTag could cause a problem if someone's post contains the HTML </table><br></td></tr>, which I assume is possible
             //Quotes themselves don't seem to break it, which is great (because that would be really common) but if someone uses a table
             //in their post, it will probably break
-            string commentTags = StringFromTag(commentBlock, "<td class='forumPost'", "</td></tr></table>"); //Same potential problem as above
-            return InnerText(commentTags, 0, commentTags.Length);
-        }
-
-        private static async Task<string> getHTMLStringFromUriAsync(HttpClient client, Uri tlProfileUri)
-        {
-            using (client)
-            {
-                var tlProfile_response = await client.GetAsync(tlProfileUri);
-
-                if (tlProfile_response.IsSuccessStatusCode)
-                {
-                    return await tlProfile_response.Content.ReadAsStringAsync();
-                }
-                else
-                {
-                    Console.WriteLine("Uri fetch failed.");
-                    return null;
-                }
-            }
-        }
-
-        static string NameFromURI(string NameIdentifier, string URIStub, Uri fullURI)
-        {
-            if (fullURI != null)
-            {
-                string UriString = fullURI.ToString();
-                int URI_index = UriString.IndexOf(URIStub);
-                if (URI_index == -1)
-                {
-                    Console.WriteLine("Name not found. Are you sure this is a " + NameIdentifier + "URI?");
-                    return null;
-                }
-                else
-                {
-                    int name_index = URI_index + URIStub.Length;
-                    int name_length = UriString.Length - name_index;
-                    return removeCharCodes(UriString.Substring(name_index, name_length));
-                }
-            }
-            else
-            {
-                Console.WriteLine("Uri was null. Should you even be calling this?");
-                return null;
-            }
+            string commentTags = HTMLUtilities.StringFromTag(commentBlock, "<td class='forumPost'", "</td></tr></table>"); //Same potential problem as above
+            return HTMLUtilities.InnerText(commentTags, 0, commentTags.Length);
         }
 
         static string twitterNameFromURI(Uri twitterURI)
         {
-            return NameFromURI("Twiter Profile", "twitter.com/", twitterURI);
+            return HTMLUtilities.NameFromURI("Twiter Profile", "twitter.com/", twitterURI);
         }
 
         static string tlNameFromURI(Uri tlProfileURI)
         {
-            return NameFromURI("Teamliquid Profile", "teamliquid.net/forum/profile.php?user=", tlProfileURI);
+            return HTMLUtilities.NameFromURI("Teamliquid Profile", "teamliquid.net/forum/profile.php?user=", tlProfileURI);
         }
 
         static string fbNameFromURI(Uri fbProfileURI)
         {
-            return NameFromURI("Facebook Profile", "facebook.com/", fbProfileURI);
+            return HTMLUtilities.NameFromURI("Facebook Profile", "facebook.com/", fbProfileURI);
         }
 
         static string redditNameFromURI(Uri redditProfileURI)
         {
-            return NameFromURI("Reddit Profile", "reddit.com/user/", redditProfileURI);
-        }
-
-        public static string StringFromTag(string sourceString, string tagStart, string tagClose)
-        {
-            int tagStart_index = sourceString.IndexOf(tagStart);
-            if (tagStart_index == -1)
-            {
-                return "Opening tag not found!";
-            }
-            else
-            {
-                int tagEnd_index = sourceString.IndexOf(tagClose, tagStart_index + tagStart.Length) + tagClose.Length;
-                if (tagEnd_index == -1)
-                {
-                    return "Closing tag not found! (Did you close a different tag or is the HTML malformed?";
-                }
-                else
-                {
-                    int tag_length = tagEnd_index - tagStart_index;
-                    return sourceString.Substring(tagStart_index, tag_length);
-                }
-            }
-        }
-
-        public static Uri hrefUriFromTitle(string sourceString, string title_name)
-        {
-            int title_index = sourceString.IndexOf("title=\"" + title_name + "\"");
-            if (title_index != -1)
-            {
-                int tag_index = sourceString.LastIndexOf("<a href=\"", title_index);
-                int href_start = sourceString.IndexOf("\"", tag_index) + 1;
-                int href_end = sourceString.IndexOf("\"", href_start);
-                int href_length = href_end - href_start;
-                return new Uri(sourceString.Substring(href_start, href_length));
-            }
-            else
-            {
-                Console.WriteLine("No " + title_name + " found!");
-                return null;
-            }
+            return HTMLUtilities.NameFromURI("Reddit Profile", "reddit.com/user/", redditProfileURI);
         }
 
         private static void unfollowAndStopSerializing(string personToUnfollow, List<personObject> tlPeople, string fileName)
@@ -538,7 +456,7 @@ namespace ConsoleApplication1
             }
         }
 
-        static async Task RunAsync(List<personObject> tlPeople)
+        static async Task ScrapeGlobalPlayerLists(List<personObject> tlPeople)
         {
             using (var client = new HttpClient())
             {
@@ -652,25 +570,26 @@ namespace ConsoleApplication1
                                         {
                                             //There should be exactly 6 TDs; for now, cycle through them and use switch to assign data to properties.
                                             //If liquipedia changes the table, this (and everything else) will break
-                                            td_start = nextTDstart(responseString, tr_candidate);
-                                            td_end = nextTDend(responseString, tr_candidate);
-                                            td_length = nextTDlength(responseString, tr_candidate);
+                                            td_start = HTMLUtilities.nextTDstart(responseString, tr_candidate);
+                                            td_end = HTMLUtilities.nextTDend(responseString, tr_candidate);
+                                            td_length = HTMLUtilities.nextTDlength(responseString, tr_candidate);
 
                                             //Td_tags is just the HTML code for this player; it is easier to inspect with WriteLine than the whole page 
                                             td_tags = responseString.Substring(td_start, td_length);
                                             //Remove the <span>...</span> sections that are duplicating some information (like team names)
-                                            td_info = removeTag(td_tags, "span");
+                                            td_info = HTMLUtilities.removeTag(td_tags, "span");
                                             //Clip out all the HTML tag <...> substrings; leave just the content 
-                                            td_info = InnerText(td_info, 0, td_info.Length).Trim();
+                                            td_info = HTMLUtilities.InnerText(td_info, 0, td_info.Length).Trim();
                                             //Remove weird character codes like &#160;
-                                            td_info = removeCharCodes(td_info);
+                                            td_info = HTMLUtilities.removeCharCodes(td_info);
 
                                             //Assign the properties you are grabbing to the personObject
                                             switch (i)
                                             {
                                                 case 1:
-                                                    tempPerson.liquipediaName = td_info;
-                                                    tempPerson.liquipediaURI = new Uri("http://wiki.teamliquid.net" + grabHREF(td_tags));
+                                                    //tempPerson.liquipediaName = td_info;
+                                                    tempPerson.liquipediaName = HTMLUtilities.StringFromParameter(td_tags, "title");
+                                                    tempPerson.liquipediaURI = new Uri("http://wiki.teamliquid.net" + HTMLUtilities.grabHREF(td_tags));
                                                     break;
                                                 case 2:
                                                     tempPerson.irlName = td_info;
@@ -686,11 +605,12 @@ namespace ConsoleApplication1
                                                     break;
                                                 case 6:
                                                     //This will grab twitch IDs, but will need to grab own3d IDs or, e.g. day9.tv
-                                                    //I also noticed MarineKing's twitch has an extra slash. Not sure why
-                                                    string hrefTag = grabHREF(td_tags);
+                                                    string hrefTag = HTMLUtilities.grabHREF(td_tags);
                                                     if (hrefTag != null)
                                                     {
-                                                        tempPerson.twitchName = twitchIDfromURI(new Uri(hrefTag));
+                                                        //Trimming slashes and octothorps, because e.g. MarineKing/ and beastyqt#/
+                                                        char[] trimChars = { '/', '#' };
+                                                        tempPerson.twitchName = twitchIDfromURI(new Uri(hrefTag)).TrimEnd(trimChars);
                                                     }
                                                     else
                                                     {
@@ -731,123 +651,6 @@ namespace ConsoleApplication1
                   
             }
         
-        }
-
-
-        private static string InnerText(string inputHTML, int start, int end)
-        {
-            int nesting = 0;
-            string nestString = "<";
-            string unnestString = ">";
-            string innerTextString = "";
-            string oneCharacter;
-            
-            //This is potentially confusing, because I call it "nesting" when it's really just keeping track of brackets,
-            // and not nested brackets (e.g. table brackets). I think I could just start capturing after a ">"
-            // until I reach a "<" without actually keeping track of the nesting... but leaving it as is for now.
-
-            for (int i = start; i < end; i++)
-            {
-                oneCharacter = inputHTML[i].ToString();
-                if (oneCharacter.Equals(nestString))
-                {
-                    nesting++;
-                }
-                else if (oneCharacter.Equals(unnestString))
-                {
-                    nesting--;
-                }
-
-                if ((nesting == 0) && !(oneCharacter.Equals("<")) && !(oneCharacter.Equals(">")))
-                {
-                    innerTextString = innerTextString + oneCharacter;
-                }
-            }
-
-            innerTextString = innerTextString.Trim();
-
-            if (innerTextString.Length == 0)
-            {
-                return "No Matching Text found";
-            } else
-            return innerTextString;
-        }
-        
-        public static string removeCharCodes(string inputString)
-        {
-            return inputString.Replace("&#160;","")
-                              .Replace("%20", " ")
-                              .Replace("%5B", "[") //You can thank Day[9] for making me add these two
-                              .Replace("%5D", "]"); // ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-        }
-
-        public static int nextTDstart(string searchString, int startPosition)
-        {
-            return searchString.IndexOf("<td", startPosition);
-        }
-
-        public static int nextTDend(string searchString, int startPosition)
-        {
-            return (searchString.IndexOf("</td>", startPosition) + 5);
-        }
-
-        public static int nextTDlength(string searchString, int startPosition)
-        {
-            return (nextTDend(searchString, startPosition) - nextTDstart(searchString, startPosition));
-        }
-
-        public static string removeTag(string sourceString, string tagToRemove)
-        {
-            string startTagString = "<" + tagToRemove;
-            string endTagString = "</" + tagToRemove + ">";
-            int startTag = sourceString.IndexOf(startTagString);
-            int endTag = (sourceString.IndexOf(endTagString) + endTagString.Length);
-
-            if ((startTag != -1) && (endTag != -1) && (startTag < endTag))
-            {
-                int removeLength = endTag - startTag;
-                return sourceString.Remove(startTag, removeLength);
-            }
-            else return sourceString;
-        }
-
-        public static string grabHREF(string sourceString)
-        {
-            int hrefLocation = sourceString.IndexOf("href");
-            string quoteType = "\"";
-            int uriStart = new int();
-            
-            if (hrefLocation != -1)
-            {
-                uriStart = sourceString.IndexOf("\"", hrefLocation) + 1;
-            }
-            else uriStart = 0;
-
-            if ((hrefLocation != -1) && ((uriStart > hrefLocation + 10) || (uriStart == 0)))
-            {
-                uriStart = sourceString.IndexOf("'", hrefLocation) + 1;
-                quoteType = "'";
-            }
-
-            int uriEnd = new int();
-
-            if ((uriStart < hrefLocation + 10) && (uriStart != 0))
-            {
-                uriEnd = sourceString.IndexOf(quoteType, uriStart);
-            }
-            else uriEnd = -1;
-
-            int uriLength = uriEnd - uriStart;
-
-            if ((hrefLocation != -1) && (uriStart != 0) && (uriEnd != -1) && (uriStart < uriEnd))
-            {
-                return sourceString.Substring(uriStart, uriLength);
-            }
-            else
-            {
-                //Console.WriteLine("No link tags found!"); //This was really annoying before I commented it out.
-                return null;
-            }
         }
 
         public static string twitchIDfromURI(Uri sourceUri)

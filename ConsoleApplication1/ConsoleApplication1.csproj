@@ -67,6 +67,7 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="HTMLUtils.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="TLplayerScrapeLINQ.cs" />
   </ItemGroup>
