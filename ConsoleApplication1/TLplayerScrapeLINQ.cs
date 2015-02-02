@@ -124,7 +124,7 @@ namespace ConsoleApplication1
                         string tlForumNameForPosts = Console.ReadLine().ToUpper();
                         personObject personForPosts = personObjectFromString(tlForumNameForPosts, tlPeople);
                         HttpClient client2 = new HttpClient();
-                        grabTlPosts(personForPosts, client2).Wait();
+                        grabTlPosts(personForPosts, client2, 10).Wait();
                         break;
                     case "Q":
                         quitThisGame = 1;
@@ -210,7 +210,7 @@ namespace ConsoleApplication1
             if (person.tlTotalPosts != 0) Console.WriteLine("Total posts on TeamLiquid.net: " + person.tlTotalPosts);
         }
 
-        static async Task grabTlPosts(personObject person, HttpClient client)
+        static async Task grabTlPosts(personObject person, HttpClient client, int postsToGrab)
         {
             Uri postsPage = tlPostUriFromTlUsername(person.tlName);
             string tlPostsResultPage = await getHTMLStringFromUriAsync(client, postsPage);
@@ -221,46 +221,69 @@ namespace ConsoleApplication1
             string srch_res_toggle = "1";
             person.tlPostList = new List<tlPostObject>();
 
-            while (readPosition != -1 && readPosition < postsBlock.Length && postCount < 10)
+            while (readPosition != -1 && readPosition < postsBlock.Length && postCount < postsToGrab)
             {
                 //Have to read through by TDs, but add list items by individual links
                 //So, keep track of post general information by TD, then add it all at each link
                 //(So there will be a while loop in this while loop)
                 int threadBlock_start = postsBlock.IndexOf("<tr><td class='srch_res", readPosition);
                 int threadBlock_end = postsBlock.IndexOf("</td></tr>", threadBlock_start) + "</td></tr>".Length;
+                readPosition = threadBlock_start;
                 string threadBlock = postsBlock.Substring(threadBlock_start, threadBlock_end - threadBlock_start);
                 string post_forum_block = StringFromTag(threadBlock, "<td class='srch_res" + srch_res_toggle + "'><font size='-2' color='#808080'>", "</font>");
                 string post_forum = InnerText(post_forum_block, 0, post_forum_block.Length).TrimEnd(":".ToCharArray());
                 string thread_title_block = StringFromTag(threadBlock, "<a class='sl' name='srl' href=", "</a>");
                 string thread_title = InnerText(thread_title_block, 0, thread_title_block.Length);
                 string thread_Uri_stub = "http://www.teamliquid.net" + grabHREF(thread_title_block);
+                Console.WriteLine(thread_title);
+                Console.WriteLine();
 
                 //Process thread posts here
                 int post_list_block_start = threadBlock.IndexOf("<a class='sls' name='srl' href='viewpost.php?post_id=");
-                readPosition = post_list_block_start;
                 int post_list_block_end = threadBlock.IndexOf("</td>", post_list_block_start);
-                string post_list_block = threadBlock.Substring(post_list_block_start, post_list_block_end - post_list_block_start);
+                int post_list_block_length = post_list_block_end - post_list_block_start;
+                string post_list_block = threadBlock.Substring(post_list_block_start, post_list_block_length);
                 int subThread_position = 0;
 
-                while (subThread_position != -1)
+                while (subThread_position != -1 && postCount < postsToGrab)
                 {
+                    //This is NOT DUPLICATING the block immediately before; it handles situations where there are more than
+                    //one comment per thread.
                     int postLink_start = post_list_block.IndexOf("<a class='sls' name='srl' href='viewpost.php?post_id=", subThread_position);
                     int postLink_end = post_list_block.IndexOf("</a>", postLink_start) + "</a>".Length;
                     int postLink_length = postLink_end - postLink_start;
                     string postLink_tags = post_list_block.Substring(postLink_start, postLink_length);
                     Uri postLink = new Uri("http://www.teamliquid.net/forum/" + grabHREF(postLink_tags));
                     int postNumber = Convert.ToInt32(InnerText(postLink_tags, 0, postLink_tags.Length));
-                    readPosition = postLink_end + 1;
                     subThread_position = post_list_block.IndexOf("<a class='sls' name='srl' href='viewpost.php?post_id=", postLink_end);
+                    //Experimental: Grab the actual post text here. This could severely bog down viewing post history;
+                    //...but the post history is pretty useless otherwise. Even displaying just one comment is better
+                    //than the current preview.
+                    //
+                    //As far as the client goes, using the same HttpClient as before throws an exception "cannot used disposed blah blah blah."
+                    //I think I should use a separate client for each comment. That way, in the future, I can grab the pages concurrently
+                    //in separate threads. For now, I'm waiting in between.
+                    HttpClient commentClient = new HttpClient();
+                    string commentText = await grabThreadPageHTMLAsync(commentClient, postLink, postNumber);
+
                     person.tlPostList.Add(new tlPostObject(thread_title,
                                                            post_forum,
                                                            postLink,
                                                            postNumber,
-                                                           ""//Working on this. Limit to 10 at a time or something 
+                                                           commentText//Working on this. Limit to 10 at a time or something 
                                                            ));//Date and time don't come from this page, either
-                    Console.WriteLine(thread_title + ", " + postNumber);
+                    
+                    
+
+                    Console.WriteLine("Comment # " + postNumber + ":");
+                    Console.WriteLine();
+                    Console.WriteLine(commentText);
+                    Console.WriteLine();
                     postCount++;
                 }
+
+                Console.WriteLine("-----");
+                readPosition += threadBlock.Length;
 
                 if (srch_res_toggle == "1")
                     {
@@ -278,6 +301,17 @@ namespace ConsoleApplication1
         static Uri tlPostUriFromTlUsername(string tlUsername)
         {
             return new Uri("http://www.teamliquid.net/forum/search.php?q=&t=c&f=-1&u=" + tlUsername + "&gb=date&d=");
+        }
+
+        private static async Task<string> grabThreadPageHTMLAsync(HttpClient client, Uri postLink, int postNumber)
+        {
+            string threadPage = await getHTMLStringFromUriAsync(client, postLink);
+            string commentBlock = StringFromTag(threadPage, "<tr><td colspan=\"2\"><a name=\"" + postNumber.ToString() + "\">", "</table><br></td></tr>");
+            //That StringFromTag could cause a problem if someone's post contains the HTML </table><br></td></tr>, which I assume is possible
+            //Quotes themselves don't seem to break it, which is great (because that would be really common) but if someone uses a table
+            //in their post, it will probably break
+            string commentTags = StringFromTag(commentBlock, "<td class='forumPost'", "</td></tr></table>"); //Same potential problem as above
+            return InnerText(commentTags, 0, commentTags.Length);
         }
 
         private static async Task<string> getHTMLStringFromUriAsync(HttpClient client, Uri tlProfileUri)
@@ -1070,7 +1104,7 @@ namespace ConsoleApplication1
                                 string threadSection,
                                 Uri commentUri,
                                 int commentNumber,
-                                string postContent
+                                string postHTMLContent
                                 //DateTime postDateTime
                                 )
             {
