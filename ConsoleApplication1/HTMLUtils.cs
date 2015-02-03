@@ -58,17 +58,23 @@ namespace HTMLUtils
 
         public static string StringFromTag(string sourceString, string tagStart, string tagClose)
         {
-            int tagStart_index = sourceString.IndexOf(tagStart);
+            return StringFromTag(sourceString, tagStart, tagClose, 0);
+        }
+
+        public static string StringFromTag(string sourceString, string tagStart, string tagClose, int startPos)
+        {
+            int tagStart_index = sourceString.IndexOf(tagStart, startPos);
             if (tagStart_index == -1)
             {
-                return "Opening tag not found!";
+                return null;
             }
             else
             {
                 int tagEnd_index = sourceString.IndexOf(tagClose, tagStart_index + tagStart.Length) + tagClose.Length;
                 if (tagEnd_index == -1)
                 {
-                    return "Closing tag not found! (Did you close a different tag or is the HTML malformed?";
+                    Console.WriteLine("Found opening tag, but not closing tag! (Did you close a different tag or is the HTML malformed?");
+                    return null;
                 }
                 else
                 {
@@ -94,6 +100,11 @@ namespace HTMLUtils
                 Console.WriteLine("No " + title_name + " found!");
                 return null;
             }
+        }
+
+        public static string InnerText(string inputHTML)
+        {
+            return InnerText(inputHTML, 0, inputHTML.Length);
         }
 
         public static string InnerText(string inputHTML, int start, int end)

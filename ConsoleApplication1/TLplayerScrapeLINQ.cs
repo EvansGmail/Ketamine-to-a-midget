@@ -127,7 +127,7 @@ namespace ConsoleApplication1
                         string tlForumNameForPosts = Console.ReadLine().ToUpper();
                         personObject personForPosts = personObjectFromString(tlForumNameForPosts, tlPeople);
                         HttpClient client2 = new HttpClient();
-                        grabTlPosts(personForPosts, client2, cachedPostPages, 10).Wait();
+                        grabTlPosts(personForPosts, client2, cachedPostPages, 10, tlPeople).Wait();
                         break;
                     case "Q":
                         quitThisGame = 1;
@@ -213,7 +213,7 @@ namespace ConsoleApplication1
             if (person.tlTotalPosts != 0) Console.WriteLine("Total posts on TeamLiquid.net: " + person.tlTotalPosts);
         }
 
-        static async Task grabTlPosts(personObject person, HttpClient client, List<tlCachedPostPage> cachedPostPages, int postsToGrab)
+        static async Task grabTlPosts(personObject person, HttpClient client, List<tlCachedPostPage> cachedPostPages, int postsToGrab, List<personObject> tlPeople)
         {
             Uri postsPage = tlPostUriFromTlUsername(person.tlName);
             string tlPostsResultPage = await HTMLUtilities.getHTMLStringFromUriAsync(client, postsPage);
@@ -264,42 +264,35 @@ namespace ConsoleApplication1
                     //in separate threads. For now, I'm waiting in between.
                     
                     //Check to see if the post page has already been cached; you should have added a property to the tlPostObject if it has been
-                    
+                    tlCachedPostPage cachedPage = getCachedPage(cachedPostPages, thread_Uri_stub, postNumber);
 
-                    var CachedPagesThisThread = (from u in cachedPostPages
-                                                 where u.cachedPageRemoteUri == postLink //postLink is wrong... should be thread page link (maybe use the UniqueID)
-                                                 select u);
-
-                    var match = CachedPagesThisThread.FirstOrDefault().posts.Where(p => p.commentNumber == postNumber);
+                    //If the page is ripe for a refresh, do it (shouldn't really return anything)
                     
-                    if (match.FirstOrDefault().Equals(null))
+                    //This is now a bit more complicated... need to scrape the page, add postObjects to the cachedPageObject's list of posts
+                    //Since detecting edits/deletions would require comparing individual text, it probably just makes more sense to overwrite
+                    //any existing postObjects for that page. As for the player... you shouldn't need to check. Their list references the same objects
+                    //as the cachedPageObject's list, so as long as you're updating the object information (and not replacing with new objects,)
+                    //it should just work.
+                    if (cachedPage.needsRefresh)
                     {
-                        //  There is no cache page yet. Create a cachePage object for it and link it to the tlPostObject below
-                        //  Do you create an actual file and write the string to it yet, or just do everything in Strings for now?
+                        HttpClient commentClient = new HttpClient();
                         
+                        //This was the old method, that just scrapes one post:
+                        //List<tlPostObject> postsOnThisPage = await grabThreadPageHTMLAsync(commentClient, postLink, postNumber);
+                        string commentText = await grabThreadPageHTMLAsync(cachedPage, commentClient, postLink, postNumber, tlPeople);
+                        //...just pass the cache page (which has to exist at this point) and have it update values right in the method
+                        //This is fine because literally every time you pull the HttpRequest, you should update the object cache
+
                     }
                     else
-                    { 
-                    //  There is a cache page for it! Make sure it is associated with this post and check to see if it is ripe for a refresh.
+                    {
+                        //If it doesn't need a refresh... grab the text from the existing post object
                     }
-
-                    HttpClient commentClient = new HttpClient();
-                    string commentText = await grabThreadPageHTMLAsync(commentClient, postLink, postNumber);
-
-                    //Add this tlPostObject to this person's list of posts
-                    person.tlPostList.Add(new tlPostObject(0, //NEED TO UPDATE THIS BEFORE THE CACHE WILL WORK
-                                                           thread_title,
-                                                           post_forum,
-                                                           postLink,
-                                                           postNumber,
-                                                           commentText//Working on this. Limit to 10 at a time or something 
-                                                           ));//Date and time don't come from this page, either
                     
-                    
-
+                    //Spit out a cached version of the post
                     Console.WriteLine("Comment # " + postNumber + ":");
                     Console.WriteLine();
-                    Console.WriteLine(commentText);
+                    //Console.WriteLine(commentText); Find another way to print this out
                     Console.WriteLine();
                     postCount++;
                 }
@@ -320,20 +313,143 @@ namespace ConsoleApplication1
             return;
         }
 
+        private static tlCachedPostPage getCachedPage(List<tlCachedPostPage> cachedPostPages, string thread_Uri_stub, int postNumber) //You should overload this to take a post object
+        {
+            var CachedPagesThisThread = (from u in cachedPostPages
+                                         where u.cachedPageRemoteUri == new Uri(thread_Uri_stub) //postLink is wrong... should be thread page link (maybe use the UniqueID)
+                                         select u);
+
+            var match = CachedPagesThisThread.FirstOrDefault().posts.Where(p => p.commentNumber == postNumber);
+            var cached = CachedPagesThisThread.Where(q => q.posts.Equals(match.FirstOrDefault()));
+
+            //Did you find a matching post result?
+            if (match.FirstOrDefault().Equals(null))
+            {
+                //  There is no cache page yet. Create a cachePage object for it,
+                tlCachedPostPage cachedPageObject = new tlCachedPostPage(null,  //not creating or referencing a file yet
+                                                                         new Uri(thread_Uri_stub),
+                                                                         true, //This means the client needs to grab the posts. It always starts true
+                                                                         null); //The list of posts. Will add when I refresh it, below
+                //  ...add it to the list of cached pages, and...
+                cachedPostPages.Add(cachedPageObject);
+                return cachedPageObject;
+                //  ...add the posts on the page to it (do this later, so that you don't have to call it twice) 
+            }
+            else
+            {
+                //  There is a cache page for it! Check to see if it is ripe for a refresh.
+                tlCachedPostPage cachedPageObject = (tlCachedPostPage)cached;
+                return cachedPageObject;
+            }    
+        }
+
         static Uri tlPostUriFromTlUsername(string tlUsername)
         {
             return new Uri("http://www.teamliquid.net/forum/search.php?q=&t=c&f=-1&u=" + tlUsername + "&gb=date&d=");
         }
 
-        private static async Task<string> grabThreadPageHTMLAsync(HttpClient client, Uri postLink, int postNumber)
+        private static async Task<string> grabThreadPageHTMLAsync(tlCachedPostPage cachedPage, HttpClient client, Uri postLink, int postNumber, List<personObject> tlPeople)
         {
             string threadPage = await HTMLUtilities.getHTMLStringFromUriAsync(client, postLink);
-            string commentBlock = HTMLUtilities.StringFromTag(threadPage, "<tr><td colspan=\"2\"><a name=\"" + postNumber.ToString() + "\">", "</table><br></td></tr>");
-            //That StringFromTag could cause a problem if someone's post contains the HTML </table><br></td></tr>, which I assume is possible
-            //Quotes themselves don't seem to break it, which is great (because that would be really common) but if someone uses a table
-            //in their post, it will probably break
-            string commentTags = HTMLUtilities.StringFromTag(commentBlock, "<td class='forumPost'", "</td></tr></table>"); //Same potential problem as above
-            return HTMLUtilities.InnerText(commentTags, 0, commentTags.Length);
+
+            //Scrape the unique thread ID
+            string postLinkString = postLink.ToString();
+            int thread_id_start = postLinkString.LastIndexOf("/") + 1;
+            int thread_id_length = postLinkString.IndexOf("-", thread_id_start) - 1 - thread_id_start;
+            int thread_id = Convert.ToInt32(postLinkString.Substring(thread_id_start, thread_id_length));
+            
+            //Scrape the thread title
+            string thread_title = HTMLUtilities.InnerText(HTMLUtilities.StringFromTag(threadPage, "<title>", "</title>"));
+
+            //Scrape the post forum
+            string subforumBlock = HTMLUtilities.StringFromTag(threadPage, "Forum Index</span></a></span>", "</td>");
+            string subforumStartString = "<span itemprop=\"title\">";
+            int subforumStart = subforumBlock.LastIndexOf(subforumStartString) + subforumStartString.Length;
+            string subForumEndString = "</span></a></span>";
+            int subforumLength = subforumBlock.IndexOf(subForumEndString, subforumStart) - 1 - subforumStart;
+            string postSubforum = subforumBlock.Substring(subforumStart, subforumLength);
+
+            //Scrape the individual posts!
+            int readPosition = 0;
+            string startBlock = "<tr><td colspan=\"2\"><a name=\"";
+            string endBlock = "</table><br></td></tr>";
+            
+            while (readPosition != -1)
+            {
+                string commentBlock = HTMLUtilities.StringFromTag(threadPage, startBlock, endBlock, readPosition);
+                //Scrape the post blocks here
+                
+                //Scrape the post link
+                string singlePostLink = "http://www.teamliquid.net" +
+                                        HTMLUtilities.grabHREF(
+                                        HTMLUtilities.StringFromTag(commentBlock, "<a href=\"/forum/viewpost.php?post_id\"", " class=\"submessage\""));
+
+                //Scrape the post Number
+                int singlePostNumber = Convert.ToInt32(
+                                            HTMLUtilities.StringFromParameter(
+                                                HTMLUtilities.StringFromTag(commentBlock, "<a name=\"", "</a>"),
+                                                "name")
+                                            );
+
+                //Scrape the post Author
+                string authorBlock = HTMLUtilities.StringFromTag(commentBlock, "<span class='forummsginfo'>&nbsp;", "</span>");
+                int authorName_start = authorBlock.IndexOf("&nbsp;") + 6;
+                int authorName_length = authorBlock.LastIndexOf(" &nbsp;") - 1 - authorName_start;
+                string authorName = authorBlock.Substring(authorName_start, authorName_length);
+
+                //Scrape the comment text
+                //That StringFromTag could cause a problem if someone's post contains the HTML </table><br></td></tr>, which I assume is possible
+                //Quotes themselves don't seem to break it, which is great (because that would be really common) but if someone uses a table
+                //in their post, it will probably break
+                string commentTags = HTMLUtilities.StringFromTag(commentBlock, "<td class='forumPost'", "</td></tr></table>"); //Same potential problem as above
+                string commentHTML = HTMLUtilities.InnerText(commentTags, 0, commentTags.Length);
+                
+                //Scrape the date/time [TO DO]
+
+                //Impement updating the postObjects. Pseudocode:
+                //
+                //              if cachedPage.postList contains the post
+                //                  update the post info
+                //                  you're done
+                //              else
+                //                  cachedPage.postList.Add(the post)
+                //                  if the person is a personObject
+                //                      person.postList.Add(the post)
+                //              endif
+
+                var matchingPost = (from w in cachedPage.posts
+                                   where w.commentNumber == singlePostNumber
+                                   select w);
+                tlPostObject tempPostObject = matchingPost.FirstOrDefault();
+
+                if (tempPostObject != null)
+                {
+                    tempPostObject.postConent = commentHTML;
+                }
+                else
+                {
+                    cachedPage.posts.Add(tempPostObject);
+                    tempPostObject.commentNumber = singlePostNumber;
+                    tempPostObject.commentUri = new Uri(singlePostLink);
+                    tempPostObject.postConent = commentHTML;
+                    tempPostObject.threadSection = postSubforum;
+                    tempPostObject.threadTitle = thread_title;
+                    tempPostObject.uniqueThreadId = thread_id; //YOU HAVE TO ACTUALLY IMPLEMENT THIS I THINK MAYBE
+                
+                    var personMatch = (from x in tlPeople
+                                       where x.tlName == authorName
+                                       select x);
+                    personObject tempPerson = personMatch.FirstOrDefault();
+                    
+                    if (tempPerson != null)
+                    {
+                        tempPerson.tlPostList.Add(tempPostObject);
+                    }
+                }
+
+                readPosition = threadPage.IndexOf(startBlock, readPosition + commentBlock.Length);
+            }
+            return null;
         }
 
         static string twitterNameFromURI(Uri twitterURI)
@@ -704,6 +820,29 @@ namespace ConsoleApplication1
                 //Empty constructor required to compile.
             }
 
+            /// <summary>
+            /// Creates an object reference to a person who can be followed on various accounts
+            /// </summary>
+            /// <param name="liquipediaName">The person's unique Liquipedia page name, if one exists</param>
+            /// <param name="liquipediaURI">A Uri object to the person's Liquipedia page, if one exists</param>
+            /// <param name="country">The person's home country</param>
+            /// <param name="bnetName">The person's battle.net user ID and character code</param>
+            /// <param name="bnetProfileURI">The person's battle.net profile Uri</param>
+            /// <param name="mainRace">The person's main race played: Terran, Zerg, Protoss or Random</param>
+            /// <param name="teamName">The person's team name</param>
+            /// <param name="teamSiteURI">A Uri object to the person's team's webpage</param>
+            /// <param name="irlName">The person's real name in format First [Middle] Last</param>
+            /// <param name="twitterName">The person's Twitter account name</param>
+            /// <param name="twitterURI">A Uri object to the person's Twitter profile page</param>
+            /// <param name="tlName">The person's TeamLiquid.net/forum username</param>
+            /// <param name="tlProfileURI">A Uri object to the person's TeamLiquid.net/forum profile</param>
+            /// <param name="tlTotalPosts">The total number of comments the person has posted to TeamLiquid.net</param>
+            /// <param name="fbName">The person's Facebook Username</param>
+            /// <param name="fbURI">A Uri object to the person's Facebook profile</param>
+            /// <param name="twitchName">The person's Twitch.tv Username</param>
+            /// <param name="twitchURI">A Uri object to the person's Twitch.tv channel</param>
+            /// <param name="followed">True if the user is following this player, false if the user is not</param>
+            /// <param name="tlPostList">An object reference to a list of tlPostObjects containing posts made by the person</param>
             public personObject(string liquipediaName,
                                 Uri liquipediaURI,
                                 string country,
@@ -924,6 +1063,13 @@ namespace ConsoleApplication1
                 //Empty container required to compile
             }
 
+            /// <summary>
+            /// Creates an object reference to a Teamliquid.net forum HTML page that has been cached
+            /// </summary>
+            /// <param name="cachedPageLocation">The local Uri where the cached page HTML file is located</param>
+            /// <param name="cachedPageRemoteUri">The original, remote Uri of the cached page</param>
+            /// <param name="needsRefresh">True if the page needs to be updated, false if not</param>
+            /// <param name="posts">A list object containing references to the tlPostObjects for every post on the cached page</param>
             public tlCachedPostPage(Uri cachedPageLocation,
                                     Uri cachedPageRemoteUri,
                                     bool needsRefresh,
@@ -961,15 +1107,23 @@ namespace ConsoleApplication1
             }
         }
     
-
-        public class tlPostObject //tlPostObjects are references to specific Comments on TeamLiquid.
+        public class tlPostObject
         {
             public tlPostObject()
             {
                 //Empty container required to compile
             }
 
-            public tlPostObject(int uniquePostId,
+            /// <summary>
+            /// Creates an object reference to a specific Comment or Post on TeamLiquid.
+            /// </summary>
+            /// <param name="uniqueThreadId">The unique integer identifier tied to the TeamLiquid.net/forum thread in which this Post or Comment appears</param>
+            /// <param name="threadTitle">The string title of the thread from the TeamLiquid.net forums in which this Post or Comment appears</param>
+            /// <param name="threadSection">The Teamliquid.net sub-forum on which the thread for this Post or Comment appears</param>
+            /// <param name="commentUri">The Uri address object linking directly to this Post or Comment</param>
+            /// <param name="commentNumber">The <![CDATA[ <a name=#> ]]> comment number of this Post or Comment in its parent thread</param>
+            /// <param name="postHTMLContent">A string containing the HTML markup content of the Post or Comment</param>
+            public tlPostObject(int uniqueThreadId,
                                 string threadTitle,
                                 string threadSection,
                                 Uri commentUri,
@@ -979,11 +1133,11 @@ namespace ConsoleApplication1
                                 //CachePageObject (will be shared with all other postObjects on the same page)
                                 )
             {
-                UniqueID = uniquePostId;   
+                UniqueID = uniqueThreadId;   
             }
 
             private int UniqueID;
-            public int uniquePostId
+            public int uniqueThreadId
             {
                 get { return UniqueID; }
                 set { UniqueID = value;}
