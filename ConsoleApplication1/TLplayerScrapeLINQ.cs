@@ -24,7 +24,9 @@ namespace ConsoleApplication1
             
 
             List<personObject> tlPeople = new List<personObject>();
-            
+            //Not actually saving/serializing these now; just for caching during a single use
+            List<tlCachedPostPage> cachedPostPages = new List<tlCachedPostPage>();
+
             //Most of the functionality is hidden in RunAsync right now. It grabs all the web data.
             ScrapeGlobalPlayerLists(tlPeople).Wait();
             
@@ -125,7 +127,7 @@ namespace ConsoleApplication1
                         string tlForumNameForPosts = Console.ReadLine().ToUpper();
                         personObject personForPosts = personObjectFromString(tlForumNameForPosts, tlPeople);
                         HttpClient client2 = new HttpClient();
-                        grabTlPosts(personForPosts, client2, 10).Wait();
+                        grabTlPosts(personForPosts, client2, cachedPostPages, 10).Wait();
                         break;
                     case "Q":
                         quitThisGame = 1;
@@ -211,7 +213,7 @@ namespace ConsoleApplication1
             if (person.tlTotalPosts != 0) Console.WriteLine("Total posts on TeamLiquid.net: " + person.tlTotalPosts);
         }
 
-        static async Task grabTlPosts(personObject person, HttpClient client, int postsToGrab)
+        static async Task grabTlPosts(personObject person, HttpClient client, List<tlCachedPostPage> cachedPostPages, int postsToGrab)
         {
             Uri postsPage = tlPostUriFromTlUsername(person.tlName);
             string tlPostsResultPage = await HTMLUtilities.getHTMLStringFromUriAsync(client, postsPage);
@@ -257,16 +259,31 @@ namespace ConsoleApplication1
                     Uri postLink = new Uri("http://www.teamliquid.net/forum/" + HTMLUtilities.grabHREF(postLink_tags));
                     int postNumber = Convert.ToInt32(HTMLUtilities.InnerText(postLink_tags, 0, postLink_tags.Length));
                     subThread_position = post_list_block.IndexOf("<a class='sls' name='srl' href='viewpost.php?post_id=", postLink_end);
-                    //Experimental: Grab the actual post text here. This could severely bog down viewing post history;
-                    //...but the post history is pretty useless otherwise. Even displaying just one comment is better
-                    //than the current preview.
-                    //
-                    //As far as the client goes, using the same HttpClient as before throws an exception "cannot used disposed blah blah blah."
+                    
                     //I think I should use a separate client for each comment. That way, in the future, I can grab the pages concurrently
                     //in separate threads. For now, I'm waiting in between.
+                    
+                    //Check to see if the post page has already been cached, it will be if there is a page with the
+                    //same thread Uri, that has a post with the same post comment number.
+                    var matchingCachedPage = (from u in cachedPostPages
+                                              where u.cachedPageRemoteUri == postLink //postLink is wrong... should be thread page
+                                              from v in u.posts //How do I join these queries?
+                                              where v.commentNumber == postNumber
+                                              select u);
+                    if (matchingCachedPage.FirstOrDefault().Equals(null))
+                    {
+                        //  If it has not, create a cachePage object for it, and link it to the tlPostObject below
+                        
+                    }
+                    else
+                    { 
+                    //  If it has, make sure it is associated with this post and check to see if it is ripe for a refresh
+                    }
+
                     HttpClient commentClient = new HttpClient();
                     string commentText = await grabThreadPageHTMLAsync(commentClient, postLink, postNumber);
 
+                    //Add this tlPostObject to this person's list of posts
                     person.tlPostList.Add(new tlPostObject(thread_title,
                                                            post_forum,
                                                            postLink,
@@ -905,6 +922,7 @@ namespace ConsoleApplication1
 
             public tlCachedPostPage(Uri cachedPageLocation,
                                     Uri cachedPageRemoteUri,
+                                    bool needsRefresh,
                                     List<tlPostObject> posts)
             {
                 //No unique ID at this point... maybe some substring of the URL?
@@ -922,6 +940,13 @@ namespace ConsoleApplication1
             {
                 get { return cachedPageRemoteUriValue; }
                 set { cachedPageRemoteUriValue = value; }
+            }
+
+            private bool needsRefreshValue;
+            public bool needsRefresh
+            {
+                get { return needsRefreshValue; }
+                set { needsRefreshValue = value; }
             }
 
             private List<tlPostObject> postsValue;
