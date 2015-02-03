@@ -263,28 +263,32 @@ namespace ConsoleApplication1
                     //I think I should use a separate client for each comment. That way, in the future, I can grab the pages concurrently
                     //in separate threads. For now, I'm waiting in between.
                     
-                    //Check to see if the post page has already been cached, it will be if there is a page with the
-                    //same thread Uri, that has a post with the same post comment number.
-                    var matchingCachedPage = (from u in cachedPostPages
-                                              where u.cachedPageRemoteUri == postLink //postLink is wrong... should be thread page
-                                              from v in u.posts //How do I join these queries?
-                                              where v.commentNumber == postNumber
-                                              select u);
-                    if (matchingCachedPage.FirstOrDefault().Equals(null))
+                    //Check to see if the post page has already been cached; you should have added a property to the tlPostObject if it has been
+                    
+
+                    var CachedPagesThisThread = (from u in cachedPostPages
+                                                 where u.cachedPageRemoteUri == postLink //postLink is wrong... should be thread page link (maybe use the UniqueID)
+                                                 select u);
+
+                    var match = CachedPagesThisThread.FirstOrDefault().posts.Where(p => p.commentNumber == postNumber);
+                    
+                    if (match.FirstOrDefault().Equals(null))
                     {
-                        //  If it has not, create a cachePage object for it, and link it to the tlPostObject below
+                        //  There is no cache page yet. Create a cachePage object for it and link it to the tlPostObject below
+                        //  Do you create an actual file and write the string to it yet, or just do everything in Strings for now?
                         
                     }
                     else
                     { 
-                    //  If it has, make sure it is associated with this post and check to see if it is ripe for a refresh
+                    //  There is a cache page for it! Make sure it is associated with this post and check to see if it is ripe for a refresh.
                     }
 
                     HttpClient commentClient = new HttpClient();
                     string commentText = await grabThreadPageHTMLAsync(commentClient, postLink, postNumber);
 
                     //Add this tlPostObject to this person's list of posts
-                    person.tlPostList.Add(new tlPostObject(thread_title,
+                    person.tlPostList.Add(new tlPostObject(0, //NEED TO UPDATE THIS BEFORE THE CACHE WILL WORK
+                                                           thread_title,
                                                            post_forum,
                                                            postLink,
                                                            postNumber,
@@ -965,7 +969,8 @@ namespace ConsoleApplication1
                 //Empty container required to compile
             }
 
-            public tlPostObject(string threadTitle,
+            public tlPostObject(int uniquePostId,
+                                string threadTitle,
                                 string threadSection,
                                 Uri commentUri,
                                 int commentNumber,
@@ -974,7 +979,14 @@ namespace ConsoleApplication1
                                 //CachePageObject (will be shared with all other postObjects on the same page)
                                 )
             {
-                //No Unique ID at this point. Might need an index later.   
+                UniqueID = uniquePostId;   
+            }
+
+            private int UniqueID;
+            public int uniquePostId
+            {
+                get { return UniqueID; }
+                set { UniqueID = value;}
             }
 
             private string threadTitleValue;
