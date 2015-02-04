@@ -152,7 +152,8 @@ namespace HTMLUtils
             return inputString.Replace("&#160;", "")
                               .Replace("%20", " ")
                               .Replace("%5B", "[") //You can thank Day[9] for making me add these two
-                              .Replace("%5D", "]"); // ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                              .Replace("%5D", "]") // ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                              .Replace("&nbsp;", " ");
         }
 
         public static int nextTDstart(string searchString, int startPosition)

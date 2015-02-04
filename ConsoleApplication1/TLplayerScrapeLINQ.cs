@@ -334,7 +334,7 @@ namespace ConsoleApplication1
                 //                                                         true, //This means the client needs to grab the posts. It always starts true
                 //                                                         null); //The list of posts. Will add when I refresh it, below
                 
-                Console.WriteLine("Cachepageobject.needsRefresh = " + cachedPageObject.needsRefresh.ToString());
+                //Console.WriteLine("Cachepageobject.needsRefresh = " + cachedPageObject.needsRefresh.ToString());
 
                 //  ...add it to the list of cached pages, and...
                 cachedPostPages.Add(cachedPageObject);
@@ -390,7 +390,7 @@ namespace ConsoleApplication1
                 //Scrape the post link
                 string singlePostLink = "http://www.teamliquid.net" +
                                         HTMLUtilities.grabHREF(
-                                        HTMLUtilities.StringFromTag(commentBlock, "<a href=\"/forum/viewpost.php?post_id\"", " class=\"submessage\""));
+                                        HTMLUtilities.StringFromTag(commentBlock, "<a href=\"/forum/viewpost.php?post_id=", " class=\"submessage\""));
 
                 //Scrape the post Number
                 int singlePostNumber = Convert.ToInt32(
@@ -400,10 +400,21 @@ namespace ConsoleApplication1
                                             );
 
                 //Scrape the post Author
-                string authorBlock = HTMLUtilities.StringFromTag(commentBlock, "<span class='forummsginfo'>&nbsp;", "</span>");
-                int authorName_start = authorBlock.IndexOf("&nbsp;") + 6;
-                int authorName_length = authorBlock.LastIndexOf(" &nbsp;") - 1 - authorName_start;
-                string authorName = authorBlock.Substring(authorName_start, authorName_length);
+                string authorBlock = HTMLUtilities.StringFromTag(commentBlock, "<a class=\"submessage gift-plus\" data-user=", "data-post");
+                string authorName = null;
+
+                if (authorBlock != null)
+                {
+                    string authorBegin = "data-user=\"";
+                    string authorEnd = "\"";
+                    int authorName_start = authorBlock.IndexOf(authorBegin) + authorBegin.Length;
+                    int authorName_length = authorBlock.IndexOf(authorEnd, authorName_start) - authorName_start;
+                    authorName = authorBlock.Substring(authorName_start, authorName_length);
+                }
+                else
+                {
+                    authorName = null;
+                }
 
                 //Scrape the comment text
                 //That StringFromTag could cause a problem if someone's post contains the HTML </table><br></td></tr>, which I assume is possible
@@ -425,17 +436,27 @@ namespace ConsoleApplication1
                 //                      person.postList.Add(the post)
                 //              endif
 
-                var matchingPost = (from w in cachedPage.posts
-                                   where w.commentNumber == singlePostNumber
-                                   select w);
-                tlPostObject tempPostObject = matchingPost.FirstOrDefault();
+                tlPostObject tempPostObject = null;
 
+                if (cachedPage.posts != null)
+                {
+                    var matchingPost = (from w in cachedPage.posts
+                                        where w.commentNumber == singlePostNumber
+                                        select w);
+                    tempPostObject = matchingPost.FirstOrDefault();
+                }
+                
                 if (tempPostObject != null)
                 {
                     tempPostObject.postContent = commentHTML;
                 }
                 else
                 {
+                    tempPostObject = new tlPostObject();
+                    if (cachedPage.posts == null)
+                    {
+                        cachedPage.posts = new List<tlPostObject>();
+                    }
                     cachedPage.posts.Add(tempPostObject);
                     tempPostObject.commentNumber = singlePostNumber;
                     tempPostObject.commentUri = new Uri(singlePostLink);
@@ -449,14 +470,17 @@ namespace ConsoleApplication1
                         returnString = commentHTML;
                     }
 
-                    var personMatch = (from x in tlPeople
-                                       where x.tlName == authorName
-                                       select x);
-                    personObject tempPerson = personMatch.FirstOrDefault();
+                    if (authorName != null)
+                    { 
+                        var personMatch = (from x in tlPeople
+                                           where x.tlName == authorName
+                                           select x);
+                        personObject tempPerson = personMatch.FirstOrDefault();
                     
-                    if (tempPerson != null)
-                    {
-                        tempPerson.tlPostList.Add(tempPostObject);
+                        if (tempPerson != null)
+                        {
+                            tempPerson.tlPostList.Add(tempPostObject);
+                        }
                     }
                 }
 
