@@ -146,7 +146,7 @@ namespace ConsoleApplication1
             var person = (from u in tlPeople
                           where u.liquipediaName.ToUpper() == personString.ToUpper()
                           select u);
-            if (person.FirstOrDefault().Equals(null))
+            if (person.FirstOrDefault() == null)
             {
                 Console.WriteLine("Person not found!");
                 return null;
@@ -223,6 +223,7 @@ namespace ConsoleApplication1
             int postCount = 0;
             string srch_res_toggle = "1";
             person.tlPostList = new List<tlPostObject>();
+            string commentText = "";
 
             while (readPosition != -1 && readPosition < postsBlock.Length && postCount < postsToGrab)
             {
@@ -277,22 +278,20 @@ namespace ConsoleApplication1
                     {
                         HttpClient commentClient = new HttpClient();
                         
-                        //This was the old method, that just scrapes one post:
-                        //List<tlPostObject> postsOnThisPage = await grabThreadPageHTMLAsync(commentClient, postLink, postNumber);
-                        string commentText = await grabThreadPageHTMLAsync(cachedPage, commentClient, postLink, postNumber, tlPeople);
+                        commentText = await grabThreadPageHTMLAsync(cachedPage, commentClient, postLink, postNumber, tlPeople);
                         //...just pass the cache page (which has to exist at this point) and have it update values right in the method
                         //This is fine because literally every time you pull the HttpRequest, you should update the object cache
-
                     }
                     else
                     {
                         //If it doesn't need a refresh... grab the text from the existing post object
+                        commentText = cachedPage.posts.Where(s => s.commentUri.ToString() == thread_Uri_stub).FirstOrDefault().postContent;
                     }
                     
                     //Spit out a cached version of the post
                     Console.WriteLine("Comment # " + postNumber + ":");
                     Console.WriteLine();
-                    //Console.WriteLine(commentText); Find another way to print this out
+                    Console.WriteLine(commentText);
                     Console.WriteLine();
                     postCount++;
                 }
@@ -319,17 +318,24 @@ namespace ConsoleApplication1
                                          where u.cachedPageRemoteUri == new Uri(thread_Uri_stub) //postLink is wrong... should be thread page link (maybe use the UniqueID)
                                          select u);
 
-            var match = CachedPagesThisThread.FirstOrDefault().posts.Where(p => p.commentNumber == postNumber);
-            var cached = CachedPagesThisThread.Where(q => q.posts.Equals(match.FirstOrDefault()));
+            //Items.Where( i => i.TestList.All(li => li.State == 2))
+            var match = CachedPagesThisThread.Where(q => q.posts.All(li => li.commentUri.ToString() == thread_Uri_stub)).FirstOrDefault();
 
             //Did you find a matching post result?
-            if (match.FirstOrDefault().Equals(null))
+            if (match == null)
             {
                 //  There is no cache page yet. Create a cachePage object for it,
-                tlCachedPostPage cachedPageObject = new tlCachedPostPage(null,  //not creating or referencing a file yet
-                                                                         new Uri(thread_Uri_stub),
-                                                                         true, //This means the client needs to grab the posts. It always starts true
-                                                                         null); //The list of posts. Will add when I refresh it, below
+                tlCachedPostPage cachedPageObject = new tlCachedPostPage();
+                cachedPageObject.cachedPageRemoteUri = new Uri(thread_Uri_stub);
+                cachedPageObject.needsRefresh = true;
+
+                //tlCachedPostPage cachedPageObject = new tlCachedPostPage(null,  //not creating or referencing a file yet
+                //                                                         new Uri(thread_Uri_stub),
+                //                                                         true, //This means the client needs to grab the posts. It always starts true
+                //                                                         null); //The list of posts. Will add when I refresh it, below
+                
+                Console.WriteLine("Cachepageobject.needsRefresh = " + cachedPageObject.needsRefresh.ToString());
+
                 //  ...add it to the list of cached pages, and...
                 cachedPostPages.Add(cachedPageObject);
                 return cachedPageObject;
@@ -338,7 +344,7 @@ namespace ConsoleApplication1
             else
             {
                 //  There is a cache page for it! Check to see if it is ripe for a refresh.
-                tlCachedPostPage cachedPageObject = (tlCachedPostPage)cached;
+                tlCachedPostPage cachedPageObject = (tlCachedPostPage)match;
                 return cachedPageObject;
             }    
         }
@@ -351,14 +357,16 @@ namespace ConsoleApplication1
         private static async Task<string> grabThreadPageHTMLAsync(tlCachedPostPage cachedPage, HttpClient client, Uri postLink, int postNumber, List<personObject> tlPeople)
         {
             string threadPage = await HTMLUtilities.getHTMLStringFromUriAsync(client, postLink);
+            string returnString = null;
 
             //Scrape the unique thread ID
-            string postLinkString = postLink.ToString();
+            string threadLinkBlock = HTMLUtilities.StringFromTag(threadPage, "<link rel=\"canonical\"", "</head>");
+            string postLinkString = HTMLUtilities.grabHREF(threadLinkBlock);
             int thread_id_start = postLinkString.LastIndexOf("/") + 1;
-            int thread_id_length = postLinkString.IndexOf("-", thread_id_start) - 1 - thread_id_start;
+            int thread_id_length = postLinkString.IndexOf("-", thread_id_start) - thread_id_start;
             int thread_id = Convert.ToInt32(postLinkString.Substring(thread_id_start, thread_id_length));
             
-            //Scrape the thread title
+            //Scrape the thread title - this includes the page number, which sucks, but isn't a priority
             string thread_title = HTMLUtilities.InnerText(HTMLUtilities.StringFromTag(threadPage, "<title>", "</title>"));
 
             //Scrape the post forum
@@ -366,7 +374,7 @@ namespace ConsoleApplication1
             string subforumStartString = "<span itemprop=\"title\">";
             int subforumStart = subforumBlock.LastIndexOf(subforumStartString) + subforumStartString.Length;
             string subForumEndString = "</span></a></span>";
-            int subforumLength = subforumBlock.IndexOf(subForumEndString, subforumStart) - 1 - subforumStart;
+            int subforumLength = subforumBlock.IndexOf(subForumEndString, subforumStart) - subforumStart;
             string postSubforum = subforumBlock.Substring(subforumStart, subforumLength);
 
             //Scrape the individual posts!
@@ -424,18 +432,23 @@ namespace ConsoleApplication1
 
                 if (tempPostObject != null)
                 {
-                    tempPostObject.postConent = commentHTML;
+                    tempPostObject.postContent = commentHTML;
                 }
                 else
                 {
                     cachedPage.posts.Add(tempPostObject);
                     tempPostObject.commentNumber = singlePostNumber;
                     tempPostObject.commentUri = new Uri(singlePostLink);
-                    tempPostObject.postConent = commentHTML;
+                    tempPostObject.postContent = commentHTML;
                     tempPostObject.threadSection = postSubforum;
                     tempPostObject.threadTitle = thread_title;
                     tempPostObject.uniqueThreadId = thread_id; //YOU HAVE TO ACTUALLY IMPLEMENT THIS I THINK MAYBE
                 
+                    if (singlePostNumber == postNumber)
+                    {
+                        returnString = commentHTML;
+                    }
+
                     var personMatch = (from x in tlPeople
                                        where x.tlName == authorName
                                        select x);
@@ -449,7 +462,7 @@ namespace ConsoleApplication1
 
                 readPosition = threadPage.IndexOf(startBlock, readPosition + commentBlock.Length);
             }
-            return null;
+            return returnString;
         }
 
         static string twitterNameFromURI(Uri twitterURI)
@@ -1076,13 +1089,14 @@ namespace ConsoleApplication1
                                     List<tlPostObject> posts)
             {
                 //No unique ID at this point... maybe some substring of the URL?
+                UniqueID = cachedPageRemoteUri;
             }
             
-            private Uri cachedPageLocationValue;
+            private Uri UniqueID;
             public Uri cachedPageLocation
             {
-                get { return cachedPageLocationValue; }
-                set { cachedPageLocationValue = value; }
+                get { return UniqueID; }
+                set { UniqueID = value; }
             }
 
             private Uri cachedPageRemoteUriValue;
@@ -1172,7 +1186,7 @@ namespace ConsoleApplication1
             }
 
             private string postContentValue;
-            public string postConent
+            public string postContent
             {
                 get { return postContentValue; }
                 set { postContentValue = value; }
