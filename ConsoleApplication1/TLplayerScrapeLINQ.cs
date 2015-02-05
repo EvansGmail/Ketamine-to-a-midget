@@ -302,9 +302,47 @@ namespace ConsoleApplication1
                         //commentText = 
                         requestedPost = await grabPostAndCachePage(cachedPage, commentClient, postLink, postNumber, tlPeople);
                         cachedPage.needsRefresh = false;
-
                         //...just pass the cache page (which has to exist at this point) and have it update values right in the method
                         //This is fine because literally every time you pull the HttpRequest, you should update the object cache
+
+                        //Logic for whether to cache neighbors should go here
+                        if ((requestedPost.commentNumber < (20*cachedPage.pageNumber - 18)) && (cachedPage.prevThreadPage != null))
+                        {
+                            //check for previous cached page, and if none, scrape cachedPage.prevThreadPage for post 20*(cachedPage.pageNumer - 1)
+                            var cachedPostMatch = (from o in cachedPostPages
+                                                   where o.cachedPageUniqueThreadID == cachedPage.cachedPageUniqueThreadID
+                                                   && o.pageNumber == (cachedPage.pageNumber - 1)
+                                                   select o).FirstOrDefault();
+                            if (cachedPostMatch == null)
+                            {
+                                tlCachedPostPage cachedPrevPage = new tlCachedPostPage();
+                                int prevPostNumber = (20 * (cachedPage.pageNumber - 1));
+                                Uri postLinkUri = new Uri(cachedPage.prevThreadPage.ToString() + "#" + prevPostNumber.ToString());
+                                Console.WriteLine("Reading previous page from the web...");
+                                Console.WriteLine("...");
+                                HttpClient prevCommentClient = new HttpClient();
+                                await grabPostAndCachePage(cachedPrevPage, prevCommentClient, postLinkUri, prevPostNumber, tlPeople);
+                            }
+
+                        }
+                        else if ((requestedPost.commentNumber > (20*cachedPage.pageNumber - 2)) && (cachedPage.nextThreadPage != null))
+                        {
+                            //check for next cached page, and if none, scrape cachedPage.prevThreadPage for post 20*(cachedPage.pageNumer) + 1
+                            var cachedPostMatch = (from o in cachedPostPages
+                                                   where o.cachedPageUniqueThreadID == cachedPage.cachedPageUniqueThreadID
+                                                   && o.pageNumber == (cachedPage.pageNumber + 1)
+                                                   select o).FirstOrDefault();
+                            if (cachedPostMatch == null)
+                            {
+                                tlCachedPostPage cachedNextPage = new tlCachedPostPage();
+                                int nextPostNumber = (20 * (cachedPage.pageNumber) + 1);
+                                Uri postLinkUri = new Uri(cachedPage.nextThreadPage.ToString() + "#" + nextPostNumber.ToString());
+                                Console.WriteLine("Reading next page from the web...");
+                                Console.WriteLine("...");
+                                HttpClient nextCommentClient = new HttpClient();
+                                await grabPostAndCachePage(cachedNextPage, nextCommentClient, postLinkUri, nextPostNumber, tlPeople);
+                            }
+                        }
 
                     }
                     else
@@ -402,6 +440,41 @@ namespace ConsoleApplication1
             string subForumEndString = "</span></a></span>";
             int subforumLength = threadPage.IndexOf(subForumEndString, subforumStart) - subforumStart;
             string postSubforum = threadPage.Substring(subforumStart, subforumLength);
+
+            //Scrape the number of pages in this thread, and whether there is a previous or next one (useful later when
+            //scraping adjacent pages
+            int currentPage = 0;
+            string pagesBlock = "";
+            bool isThereANextPage = new bool();
+            
+            int pagesBlockStart = threadPage.IndexOf("<td align=\"right\">", subforumStart + subforumLength);
+            if (pagesBlockStart == -1)
+            {
+                //This is the only page in the thread.
+                currentPage = 1;
+                isThereANextPage = false;
+            }
+            else
+            {
+                int pagesBlockEnd = threadPage.IndexOf("</td>", pagesBlockStart) + "</td>".Length;
+                int pagesBlockLength = pagesBlockEnd - pagesBlockStart;
+                pagesBlock = threadPage.Substring(pagesBlockStart, pagesBlockLength);
+                int currPageStart = pagesBlock.IndexOf("<b>") + "<b>".Length;
+                int currPageEnd = pagesBlock.IndexOf("</b>", currPageStart);
+                int currPageLength = currPageEnd - currPageStart;
+                currentPage = Convert.ToInt32(pagesBlock.Substring(currPageStart, currPageLength));
+            }
+
+            if (pagesBlock.IndexOf("?page=" + (currentPage + 1).ToString()) == -1)
+            {
+                //This is the last page; there isn't one after it.
+                isThereANextPage = false;
+            }
+            else
+            {
+                //There is another page!
+                isThereANextPage = true;
+            }
 
             //Scrape the individual posts!
             int readPosition = 0;
@@ -512,7 +585,7 @@ namespace ConsoleApplication1
                 readPosition = threadPage.IndexOf(startBlock, readPosition + commentBlock.Length);
             }
 
-            //set the nextPage and prevPage here?
+            //set the Next Page and Prev Page link Uri's here
 
             int currentPageNumber = 0;
             int postLinkPageStubIndex = postLinkString.IndexOf("?page=");
@@ -522,8 +595,20 @@ namespace ConsoleApplication1
             {
                 //This is the first page of the thread!
                 currentPageNumber = 1;
-                cachedPage.nextThreadPage = new Uri(postLinkString + "?page=2");
-                //There is no previous thread page.
+                if (isThereANextPage)
+                { 
+                    cachedPage.nextThreadPage = new Uri(postLinkString + "?page=2");
+                    if (postNumber > 18)
+                    {
+                        //Check to see if poat (20 x (2-1)) + 1 = 21 is cached
+                        //If not, scrape the next page for post number 21
+                    }
+                }
+                else
+                {
+                    cachedPage.nextThreadPage = null;
+                    //No next page. Scrape nothing.
+                }
             }
             else
             {
@@ -531,21 +616,46 @@ namespace ConsoleApplication1
                 string postLinkStringStub = postLinkString.Substring(0, postLinkPageStubIndex);
 
                 currentPageNumber = Convert.ToInt32(postLinkString.Substring(postLinkPageNumLoc, postLinkString.Length - postLinkPageNumLoc));
-                //Set the adjacent pages. If this is page 2, page 1 gets no ?page= extension.
+                //Set the adjacent page links. If this is page 2, page 1 gets no ?page= extension.
+                if (isThereANextPage)
+                { 
                 cachedPage.nextThreadPage = new Uri(postLinkStringStub + "?page=" + (currentPageNumber + 1).ToString());
-                //NEED TO ACTUALLY MAKE SURE THAT EXISTS^^^
+                    if (postNumber > (20*(currentPageNumber - 1) + 18))
+                    {
+                        //Check to see if post (20 x (currentPageNumber)) + 1 is cached
+                        //If not, scrape the next page for post number (20 x currentPageNumber) + 1)
+                    }
+                }
+                else
+                {
+                    cachedPage.nextThreadPage = null;
+                    //There isn't a next page, so don't scrape anything
+                }
+
                 if (currentPageNumber == 2)
                 {
                     //Just the stub. Just to see how it feels.
                     cachedPage.prevThreadPage = new Uri(postLinkString);
+                    if (postNumber < 23)
+                    {
+                        //Check to see if post 20 is cached
+                        //If not, scrape the previous page for post number 20
+                    }
                 }
-                else
+                else if (currentPageNumber > 2)
                 { 
                     //This page minus one.
                     cachedPage.prevThreadPage = new Uri(postLinkStringStub + "?page=" + (currentPageNumber - 1).ToString());
+                    if (postNumber < (20*(currentPageNumber - 1) + 3))
+                    {
+                        //Check to see if post 20*(currentPageNumber - 1) is cached
+                        //If not, scrape the previous page for post number 20*(currentPageNumber - 1)
+                    }
                 }
 
             }
+
+            cachedPage.pageNumber = currentPageNumber;
 
             return returnPost;
         }
@@ -1177,12 +1287,14 @@ namespace ConsoleApplication1
             /// <param name="needsRefresh">True if the page needs to be updated, false if not</param>
             /// <param name="posts">A list object containing references to the tlPostObjects for every post on the cached page</param>
             /// <param name="nextThreadPage">A Uri object pointing to the next page in this cachedPage's thread, if any.</param>
+            /// <param name="pageNumber">The page number of the cached page as it appeared in it's original thread</param>
             /// <param name="prevThreadPage">A Uri object pointing to the previous page in this cachedPage's thread, if any.</param>
             public tlCachedPostPage(int cachedPageUniqueThreadID,
                                     Uri cachedPageRemoteUri,
                                     bool needsRefresh,
                                     List<tlPostObject> posts,
                                     Uri prevThreadPage,
+                                    int pageNumber,
                                     Uri nextThreadPage)
             {
                 //No unique ID at this point... maybe some substring of the URL?
@@ -1190,6 +1302,7 @@ namespace ConsoleApplication1
                 cachedPageRemoteUriValue = cachedPageRemoteUri;
                 needsRefreshValue = needsRefresh;
                 prevThreadPageValue = prevThreadPage;
+                pageNumberValue = pageNumber;
                 nextThreadPageValue = nextThreadPage;
         }
             
@@ -1226,6 +1339,13 @@ namespace ConsoleApplication1
             {
                 get { return prevThreadPageValue; }
                 set { prevThreadPageValue = value; }
+            }
+
+            private int pageNumberValue;
+            public int pageNumber
+            {
+                get { return pageNumberValue; }
+                set { pageNumberValue = value; }
             }
 
             private Uri nextThreadPageValue;
