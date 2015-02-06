@@ -127,129 +127,188 @@ namespace ConsoleApplication1
                         Console.WriteLine();
                         string tlForumNameForPosts = Console.ReadLine().ToUpper();
                         Console.WriteLine();
-                        personObject personForPosts = personObjectFromString(tlForumNameForPosts, tlPeople);
-                        HttpClient client2 = new HttpClient();
-                        List<tlPostObject> listOfReturnedPosts = grabUsersTlPosts(personForPosts, client2, cachedPostPages, 10, tlPeople).Result;
                         
-                        int countPosts = 1;
+                        personObject personForPosts = personObjectFromString(tlForumNameForPosts, tlPeople);
 
-                        foreach (tlPostObject n in listOfReturnedPosts)
+                        if (personForPosts != null)
+                        { 
+                            if (personForPosts.tlForumURI == null)
+                            {
+                                extractPersonDetail(personForPosts.liquipediaName, tlPeople).Wait();
+                            }
+                            
+                            HttpClient client2 = new HttpClient();
+                            List<tlPostObject> listOfReturnedPosts = grabUsersTlPosts(personForPosts, client2, cachedPostPages, 10, tlPeople).Result;
+                            
+                            int countPosts = 1;
+
+                            foreach (tlPostObject n in listOfReturnedPosts)
+                            {
+                                Console.WriteLine("[" + n.Author + "'s Comment Number " + countPosts + "]");
+                                Console.WriteLine(n.threadTitle);
+                                Console.WriteLine("Comment by " + n.Author);
+                                Console.WriteLine("Comment #" + n.commentNumber + ":");
+                                //Console.WriteLine(n.postContent);
+                                countPosts++;
+                                Console.WriteLine();
+                            }
+
+                            Console.WriteLine("Do you want to: \n" +
+                                               "     A. View a post in situ on a thread page? \n" +
+                                               "     B. Return to the Main Menu?");
+                            string inkey3 = Console.ReadLine().ToUpper();
+                            Console.WriteLine();
+                            switch (inkey3)
+	                        {
+                                case "A":
+                                    Console.WriteLine("Type the number of the comment you want to see in context.");
+                                    Console.WriteLine();
+                                    int inkey4 = Convert.ToInt32(Console.ReadLine().ToUpper());
+                                    Console.WriteLine(inkey4.ToString());
+                                    int threadID = listOfReturnedPosts.ElementAt(inkey4 - 1).uniqueThreadId;
+                                    Console.WriteLine(threadID.ToString());
+                                    int postID = listOfReturnedPosts.ElementAt(inkey4 - 1).commentNumber;
+                                    Console.WriteLine(postID.ToString());
+                                    string threadName = listOfReturnedPosts.ElementAt(inkey4 - 1).threadTitle;
+                                    int offSet = 0;
+
+                                    //Grabs all the cached pages for this thread
+                                    List<tlCachedPostPage> cachedThreadPageMatches = (from m in cachedPostPages
+                                                            where m.cachedPageUniqueThreadID == threadID
+                                                            select m).ToList();
+
+                                    Uri thread_Uri = cachedThreadPageMatches.First().cachedPageRemoteUri;
+                                    string thread_Uri_stub = ThreadStubStringFromThreadPageUri(thread_Uri);
+                                    string[] headings = { "Previous Comment:", "Selected Comment:", "Next Comment:" };
+                                    string inkey5 = ">";
+
+                                    tlPostObject[] threePostArray = new tlPostObject[3];
+
+                                    while ((inkey5 == "<") | (inkey5 == ">"))
+                                    {
+                                        Console.Clear();
+                                        Console.WriteLine("Thread: " + threadName);
+                                        bool canNavBack = true;
+                                        bool canNavForward = true;
+
+                                        for (int i = 0; i < 3; i++)
+                                        {
+                                            tlCachedPostPage cachedThreadPageMatch = null;
+                                            if (threePostArray[i] == null)
+                                            { 
+                                            //Finds the thread page, then the post, for the specific comment number sought
+                                            cachedThreadPageMatch = (from l in cachedThreadPageMatches
+                                                                     where l.posts.Any(li => li.commentNumber == (postID - 1 + i + offSet))
+                                                                     select l).FirstOrDefault();
+                                            }
+
+                                            if ((cachedThreadPageMatch != null) | (threePostArray[i] != null))
+                                            {
+                                            int PageNum = pageNumFromPostNum(postID - 1 + i + offSet);
+                                            Console.WriteLine("Page number: " + PageNum + ", Post number: " + (postID - 1 + i + offSet).ToString());
+
+                                            if (threePostArray[i] == null) //Might already have the post from earlier
+                                            { 
+                                                //Look for a post on the cached page
+                                                tlPostObject cachedPostMatch = (from k in cachedThreadPageMatch.posts
+                                                                            where k.commentNumber == (postID - 1 + i + offSet)
+                                                                            select k).FirstOrDefault();
+                                            
+                                                threePostArray[i] = cachedPostMatch;
+                                            }
+
+                                            Console.WriteLine();
+                                            Console.WriteLine(headings[i]);
+                                            Console.WriteLine();
+                                            Console.WriteLine("Comment by " + threePostArray[i].Author + " on page " + PageNum);
+                                            Console.WriteLine("Comment #" + threePostArray[i].commentNumber);
+                                            Console.WriteLine();
+                                            Console.WriteLine(threePostArray[i].postContent);
+                                            Console.WriteLine();
+                                            Console.WriteLine("----------");
+                                            Console.WriteLine();
+                                            }
+                                            else if (postID - 1 + i + offSet == 0) //The beginning of the thread
+                                            {
+                                                Console.WriteLine("!-- Beginning of Thread --!");
+                                                Console.WriteLine();
+                                                canNavBack = false;
+                                            }
+                                            else //You hit the end or beginning of the cache; but you don't know which.
+                                            {
+                                                threePostArray[i] = getComment(thread_Uri_stub, postID - 1 + i + offSet, cachedPostPages, tlPeople).Result;
+
+                                                if (threePostArray[i] == null)
+                                                {
+                                                    Console.WriteLine("!-- End of the Thread --!");
+                                                    Console.WriteLine();
+                                                    canNavForward = false;
+                                                }
+                                                else
+                                                {
+                                                    cachedThreadPageMatches.Add(getCachedPage(cachedPostPages, thread_Uri_stub, postID - 1 + i + offSet));
+                                                    
+                                                    int extraPageNum = pageNumFromPostNum(postID - 1 + i + offSet);
+                                                    Console.WriteLine("Page number: " + extraPageNum.ToString() + ", Post number: " + (postID - 1 + i + offSet).ToString());
+
+                                                    Console.WriteLine();
+                                                    Console.WriteLine(headings[i]);
+                                                    Console.WriteLine();
+                                                    Console.WriteLine("Comment by " + threePostArray[i].Author + " on Page " + extraPageNum.ToString());
+                                                    Console.WriteLine("Comment #" + threePostArray[i].commentNumber);
+                                                    Console.WriteLine();
+                                                    Console.WriteLine(threePostArray[i].postContent);
+                                                    Console.WriteLine();
+                                                    Console.WriteLine("----------");
+                                                    Console.WriteLine();
+                                                }
+                                            }
+                                        }
+                                    
+                                        Console.WriteLine("Choose one of the following:");
+                                        if (canNavForward) Console.WriteLine(">: Move forward one post");
+                                        if (canNavBack) Console.WriteLine("<: Move backward one post");
+                                        Console.WriteLine("Other: Return to Main Menu");
+                                        Console.WriteLine();
+                                        inkey5 = Console.ReadLine();
+
+                                        switch (inkey5)
+                                        {
+                                            case "<":
+                                                if (canNavBack)
+                                                {
+                                                    offSet--;
+                                                    threePostArray[2] = threePostArray[1];
+                                                    threePostArray[1] = threePostArray[0];
+                                                    threePostArray[0] = null;
+                                                }
+                                                break;
+                                            case ">":
+                                                if (canNavForward)
+                                                {     
+                                                    offSet++;
+                                                    threePostArray[0] = threePostArray[1];
+                                                    threePostArray[1] = threePostArray[2];
+                                                    threePostArray[2] = null;
+                                                }
+                                                break;
+                                            default:
+                                                inkey5 = "Spumoni.";
+                                                break;
+                                        }
+                                    }
+                                    break;
+                                case "B":
+                                    break;
+                                default:
+                                    break;
+	                        }
+                        }
+                        else
                         {
-                            Console.WriteLine("[" + n.Author + "'s Comment Number " + countPosts + "]");
-                            Console.WriteLine(n.threadTitle);
-                            Console.WriteLine("Comment by " + n.Author);
-                            Console.WriteLine("Comment #" + n.commentNumber + ":");
-                            //Console.WriteLine(n.postContent);
-                            countPosts++;
                             Console.WriteLine();
                         }
 
-                        Console.WriteLine("Do you want to: \n" +
-                                           "     A. View a post in situ on a thread page? \n" +
-                                           "     B. Return to the Main Menu?");
-                        string inkey3 = Console.ReadLine().ToUpper();
-                        Console.WriteLine();
-                        switch (inkey3)
-	                    {
-                            case "A":
-                                Console.WriteLine("Type the number of the comment you want to see in context.");
-                                Console.WriteLine();
-                                int inkey4 = Convert.ToInt32(Console.ReadLine().ToUpper());
-                                Console.WriteLine(inkey4.ToString());
-                                int threadID = listOfReturnedPosts.ElementAt(inkey4 - 1).uniqueThreadId;
-                                Console.WriteLine(threadID.ToString());
-                                int postID = listOfReturnedPosts.ElementAt(inkey4 - 1).commentNumber;
-                                Console.WriteLine(postID.ToString());
-                                string threadName = listOfReturnedPosts.ElementAt(inkey4 - 1).threadTitle;
-                                int offSet = 0;
-
-                                //Grabs all the cached pages for this thread
-                                List<tlCachedPostPage> cachedThreadPageMatches = (from m in cachedPostPages
-                                                        where m.cachedPageUniqueThreadID == threadID
-                                                        select m).ToList();
-
-                                foreach (tlCachedPostPage j in cachedThreadPageMatches)
-                                {
-                                    Console.WriteLine("Found a cached page in that thread, page number " + j.pageNumber.ToString());
-                                }
-
-                                Console.WriteLine("Thread: " + threadName);
-                                string[] headings = { "Previous Comment:", "Selected Comment:", "Next Comment:" };
-
-                                string inkey5 = ">";
-
-                                while ((inkey5 == "<") | (inkey5 == ">"))
-                                {
-                                    bool canNavBack = true;
-                                    bool canNavForward = true;
-
-                                    for (int i = 0; i < 3; i++)
-                                    {
-                                        //Finds the thread page, then the post, for the specific comment number sought
-                                        tlCachedPostPage cachedThreadPageMatch = (from l in cachedThreadPageMatches
-                                                                                  where l.posts.Any(li => li.commentNumber == (postID - 1 + i + offSet))
-                                                                                  select l).FirstOrDefault();
-
-                                        if (cachedThreadPageMatch != null)
-                                        { 
-                                        Console.WriteLine("Page number: " + cachedThreadPageMatch.pageNumber + ", Post number: " + (postID - 1 + i + offSet).ToString());
-
-                                        tlPostObject cachedPostMatch = (from k in cachedThreadPageMatch.posts
-                                                                        where k.commentNumber == (postID - 1 + i + offSet)
-                                                                        select k).FirstOrDefault();
-
-                                        
-                                        tlPostObject tlPtmp = cachedPostMatch;
-
-                                        Console.WriteLine();
-                                        Console.WriteLine(headings[i]);
-                                        Console.WriteLine();
-                                        Console.WriteLine("Comment by " + tlPtmp.Author + " on page " + cachedThreadPageMatch.pageNumber);
-                                        Console.WriteLine("Comment #" + tlPtmp.commentNumber);
-                                        Console.WriteLine();
-                                        Console.WriteLine(tlPtmp.postContent);
-                                        Console.WriteLine();
-                                        Console.WriteLine("----------");
-                                        Console.WriteLine();
-                                        }
-                                        else if (postID - 1 + i + offSet == 0)
-                                        {
-                                            Console.WriteLine("!-- Beginning of Thread --!");
-                                            canNavBack = false;
-                                        }
-                                        else if (cachedThreadPageMatch.nextThreadPage == null)
-                                        {
-                                            Console.WriteLine("!-- End of the Thread --!");
-                                            canNavForward = false;
-                                        }
-                                    }
-                                    
-                                    Console.WriteLine("Choose one of the following:");
-                                    if (canNavForward) Console.WriteLine(">: Move forward one post");
-                                    if (canNavBack) Console.WriteLine("<: Move backward one post");
-                                    Console.WriteLine("Other: Return to Main Menu");
-                                    Console.WriteLine();
-                                    inkey5 = Console.ReadLine();
-
-                                    switch (inkey5)
-                                    {
-                                        case "<":
-                                            if (canNavBack) offSet--;
-                                            break;
-                                        case ">":
-                                            if (canNavForward) offSet++;
-                                            break;
-                                        default:
-                                            inkey5 = "Spumoni.";
-                                            break;
-                                    }
-                                }
-                                break;
-                            case "B":
-                                break;
-                            default:
-                                break;
-	                    }
                         break;
                     case "H":
                         foreach (tlCachedPostPage p in cachedPostPages)
@@ -281,6 +340,25 @@ namespace ConsoleApplication1
 
         }
 
+        /// <summary>
+        /// Given the Uri of a single page of a thread, returns a string giving the stub URL of the first page of that thread.
+        /// </summary>
+        /// <param name="thread_Uri">A Uri object pointing to a single page of the thread</param>
+        /// <returns></returns>
+        private static string ThreadStubStringFromThreadPageUri(Uri thread_Uri)
+        {
+            string uriToString = thread_Uri.ToString();
+            int qLoc = uriToString.IndexOf("?page=");
+            if (qLoc == -1)
+            {
+                return uriToString;
+            }
+            else
+            { 
+                return uriToString.Substring(0, qLoc - 1);
+            }
+        }
+
         static personObject personObjectFromString(string personString, List<personObject> tlPeople)
         {
             var person = (from u in tlPeople
@@ -297,10 +375,16 @@ namespace ConsoleApplication1
             }
         }
 
-        static async Task extractPersonDetail(string personForDetailView, List<personObject> tlPeople)
+        static async Task<personObject> extractPersonDetail(string personForDetailView, List<personObject> tlPeople)
         {
             personObject person = personObjectFromString(personForDetailView, tlPeople);
 
+            if (person == null)
+            {
+                return await Task.Run(() => person);
+            }
+            else
+            {
             //1. Load async the players teamliquid.net profile URL
             using (var client = new HttpClient())
             {
@@ -351,6 +435,8 @@ namespace ConsoleApplication1
             if (person.twitchName != null) Console.WriteLine(person.twitchName + " on Twitch.tv: " + person.twitchURI); //updates the one scraped from the countries list, for uniformity
             if (person.redditUsername != null) Console.WriteLine(person.redditUsername + " on Reddit: " + person.redditProfileURI);
             if (person.tlTotalPosts != 0) Console.WriteLine("Total posts on TeamLiquid.net: " + person.tlTotalPosts);
+            }
+            return await Task.Run(() => person);
         }
 
         private static async Task<List<tlPostObject>> grabUsersTlPosts(personObject person, HttpClient client, List<tlCachedPostPage> cachedPostPages, int postsToGrab, List<personObject> tlPeople)
@@ -380,6 +466,7 @@ namespace ConsoleApplication1
                 string thread_title_block = HTMLUtilities.StringFromTag(threadBlock, "<a class='sl' name='srl' href=", "</a>");
                 string thread_title = HTMLUtilities.InnerText(thread_title_block, 0, thread_title_block.Length);
                 string thread_Uri_stub = "http://www.teamliquid.net" + HTMLUtilities.grabHREF(thread_title_block);
+                int UniqueThreadID = threadIdFromThreadUriString(thread_Uri_stub);
 
                 //Process thread posts here
                 int post_list_block_start = threadBlock.IndexOf("<a class='sls' name='srl' href='viewpost.php?post_id=");
@@ -399,92 +486,9 @@ namespace ConsoleApplication1
                     Uri postLink = new Uri("http://www.teamliquid.net/forum/" + HTMLUtilities.grabHREF(postLink_tags));
                     int postNumber = Convert.ToInt32(HTMLUtilities.InnerText(postLink_tags, 0, postLink_tags.Length));
                     subThread_position = post_list_block.IndexOf("<a class='sls' name='srl' href='viewpost.php?post_id=", postLink_end);
+
+                    tlPostObject requestedPost = await getComment(thread_Uri_stub, postNumber, cachedPostPages, tlPeople);
                     
-                    //I think I should use a separate client for each comment. That way, in the future, I can grab the pages concurrently
-                    //in separate threads. For now, I'm waiting in between.
-                    
-                    //Check to see if the post page has already been cached; you should have added a property to the tlPostObject if it has been
-                    tlCachedPostPage cachedPage = getCachedPage(cachedPostPages, thread_Uri_stub, postNumber);
-
-                    //If the page is ripe for a refresh, do it (shouldn't really return anything)
-                    
-                    //This is now a bit more complicated... need to scrape the page, add postObjects to the cachedPageObject's list of posts
-                    //Since detecting edits/deletions would require comparing individual text, it probably just makes more sense to overwrite
-                    //any existing postObjects for that page. As for the player... you shouldn't need to check. Their list references the same objects
-                    //as the cachedPageObject's list, so as long as you're updating the object information (and not replacing with new objects,)
-                    //it should just work.
-                    tlPostObject requestedPost = new tlPostObject();
-                    if (cachedPage.needsRefresh)
-                    {
-                        HttpClient commentClient = new HttpClient();
-
-                        Console.WriteLine("Reading page from the web...");
-                        
-                        requestedPost = await grabPostAndCachePage(cachedPage, commentClient, postLink, postNumber, tlPeople);
-                        cachedPage.needsRefresh = false;
-                        //...just pass the cache page (which has to exist at this point) and have it update values right in the method
-                        //This is fine because literally every time you pull the HttpRequest, you should update the object cache
-
-                        //Logic for whether to cache neighbors should go here
-                        if ((requestedPost.commentNumber < (20*cachedPage.pageNumber - 18)) && (cachedPage.prevThreadPage != null))
-                        {
-                            //check for previous cached page, and if none, scrape cachedPage.prevThreadPage for post 20*(cachedPage.pageNumer - 1)
-                            var cachedPostMatch = (from o in cachedPostPages
-                                                   where o.cachedPageUniqueThreadID == cachedPage.cachedPageUniqueThreadID
-                                                   && o.pageNumber == (cachedPage.pageNumber - 1)
-                                                   select o).FirstOrDefault();
-                            if (cachedPostMatch == null)
-                            {
-                                tlCachedPostPage cachedPrevPage = new tlCachedPostPage();
-                                int prevPostNumber = (20 * (cachedPage.pageNumber - 1));
-                                Uri postLinkUri = new Uri(cachedPage.prevThreadPage.ToString());
-                                tlCachedPostPage cachedNextPage = getCachedPage(cachedPostPages, postLinkUri.ToString(), prevPostNumber);
-                                Console.WriteLine("     Reading previous page from the web...");
-                                //cachedPrevPage.pageNumber = cachedPage.pageNumber - 1;
-                                //cachedPrevPage.cachedPageUniqueThreadID = cachedPage.cachedPageUniqueThreadID;
-
-                                HttpClient prevCommentClient = new HttpClient();
-                                await grabPostAndCachePage(cachedPrevPage, prevCommentClient, postLinkUri, prevPostNumber, tlPeople);
-                            }
-
-                        }
-                        else if ((requestedPost.commentNumber > (20*cachedPage.pageNumber - 2)) && (cachedPage.nextThreadPage != null))
-                        {
-                            //check for next cached page, and if none, scrape cachedPage.nextThreadPage for post 20*(cachedPage.pageNumer) + 1
-                            var cachedPostMatch = (from o in cachedPostPages
-                                                   where o.cachedPageUniqueThreadID == cachedPage.cachedPageUniqueThreadID
-                                                   && o.pageNumber == (cachedPage.pageNumber + 1)
-                                                   select o).FirstOrDefault();
-                            if (cachedPostMatch == null)
-                            {
-                                int nextPostNumber = (20 * (cachedPage.pageNumber) + 1);
-                                Uri postLinkUri = new Uri(cachedPage.nextThreadPage.ToString());
-                                tlCachedPostPage cachedNextPage = getCachedPage(cachedPostPages, postLinkUri.ToString(), nextPostNumber);
-                                Console.WriteLine("     Reading next page from the web...");
-                                //cachedNextPage.pageNumber = cachedPage.pageNumber + 1;
-                                //cachedNextPage.cachedPageUniqueThreadID = cachedPage.cachedPageUniqueThreadID;
-
-                                HttpClient nextCommentClient = new HttpClient();
-                                await grabPostAndCachePage(cachedNextPage, nextCommentClient, postLinkUri, nextPostNumber, tlPeople);
-                            }
-                        }
-
-                    }
-                    else
-                    {
-                        Console.WriteLine("Reading page from the cache...");    
-                        
-                        //If it doesn't need a refresh... grab the existing post object
-                        //commentText = cachedPage.posts.Where(s => s.commentNumber == postNumber).FirstOrDefault().postContent;
-                        requestedPost = cachedPage.posts.Where(s => s.commentNumber == postNumber).FirstOrDefault();
-                    }
-                    
-                    //Spit out a cached version of the post
-                    //Console.WriteLine("Thread #" + requestedPost.uniqueThreadId.ToString() + ": " + requestedPost.threadTitle);
-                    //Console.WriteLine("Comment #" + postNumber + ", by " + requestedPost.Author);
-                    //Console.WriteLine();
-                    //Console.WriteLine(requestedPost.postContent);
-                    //Console.WriteLine();
                     postCount++;
                     returnedPosts.Add(requestedPost);
                 }
@@ -506,6 +510,114 @@ namespace ConsoleApplication1
             return await Task.Run(() => returnedPosts);
         }
 
+        /// <summary>
+        /// Returns a tlPostObject from a TL thread Uri stub and a post number. If the post is cached, it uses the cache; if not, is scrapes and caches the page on which the comment appears. 
+        /// </summary>
+        /// <param name="thread_Uri_stub">Everything before "?page=" in a TL.net thread Uri (parameter is a string).</param>
+        /// <param name="postNumber">The individual comment number as it appears in the thread.</param>
+        /// <param name="cachedPostPages">The list of cached pages.</param>
+        /// <param name="tlPeople">The list of people.</param>
+        /// <returns></returns>
+        private static async Task<tlPostObject> getComment(string thread_Uri_stub, int postNumber, List<tlCachedPostPage> cachedPostPages, List<personObject> tlPeople)
+        {
+            tlPostObject requestedPost = new tlPostObject();
+            //I think I should use a separate client for each comment. That way, in the future, I can grab the pages concurrently
+            //in separate threads. For now, I'm waiting in between.
+
+            //Check to see if the post page has already been cached; you should have added a property to the tlPostObject if it has been
+            tlCachedPostPage cachedPage = getCachedPage(cachedPostPages, thread_Uri_stub, postNumber);
+
+            //If the page is ripe for a refresh, do it (shouldn't really return anything)
+
+            //This is now a bit more complicated... need to scrape the page, add postObjects to the cachedPageObject's list of posts
+            //Since detecting edits/deletions would require comparing individual text, it probably just makes more sense to overwrite
+            //any existing postObjects for that page. As for the player... you shouldn't need to check. Their list references the same objects
+            //as the cachedPageObject's list, so as long as you're updating the object information (and not replacing with new objects,)
+            //it should just work.
+
+
+            int threadPageNumber = pageNumFromPostNum(postNumber);
+            Uri thread_page_Uri = new Uri(thread_Uri_stub + "?page=" + threadPageNumber.ToString());
+
+            if (cachedPage.needsRefresh)
+            {
+                HttpClient commentClient = new HttpClient();
+
+                Console.WriteLine("Reading page from the web...");
+
+                requestedPost = await grabPostAndCachePage(cachedPage, commentClient, thread_page_Uri, postNumber, tlPeople);
+                cachedPage.needsRefresh = false;
+
+                if (requestedPost == null)
+                {
+                    return null;
+                }
+                //...just pass the cache page (which has to exist at this point) and have it update values right in the method
+                //This is fine because literally every time you pull the HttpRequest, you should update the object cache
+
+                //Logic for whether to cache neighbors should go here
+                if ((requestedPost.commentNumber < (20 * cachedPage.pageNumber - 18)) && (cachedPage.prevThreadPage != null))
+                {
+                    //check for previous cached page, and if none, scrape cachedPage.prevThreadPage for post 20*(cachedPage.pageNumer - 1)
+                    var cachedPostMatch = (from o in cachedPostPages
+                                           where o.cachedPageUniqueThreadID == cachedPage.cachedPageUniqueThreadID
+                                           && o.pageNumber == (cachedPage.pageNumber - 1)
+                                           select o).FirstOrDefault();
+                    if (cachedPostMatch == null)
+                    {
+                        tlCachedPostPage cachedPrevPage = new tlCachedPostPage();
+                        int prevPostNumber = (20 * (cachedPage.pageNumber - 1));
+                        Uri postLinkUri = new Uri(cachedPage.prevThreadPage.ToString());
+                        tlCachedPostPage cachedNextPage = getCachedPage(cachedPostPages, postLinkUri.ToString(), prevPostNumber);
+                        Console.WriteLine("     Reading previous page from the web...");
+                        //cachedPrevPage.pageNumber = cachedPage.pageNumber - 1;
+                        //cachedPrevPage.cachedPageUniqueThreadID = cachedPage.cachedPageUniqueThreadID;
+
+                        HttpClient prevCommentClient = new HttpClient();
+                        await grabPostAndCachePage(cachedPrevPage, prevCommentClient, postLinkUri, prevPostNumber, tlPeople);
+                    }
+
+                }
+                else if ((requestedPost.commentNumber > (20 * cachedPage.pageNumber - 2)) && (cachedPage.nextThreadPage != null))
+                {
+                    //check for next cached page, and if none, scrape cachedPage.nextThreadPage for post 20*(cachedPage.pageNumer) + 1
+                    var cachedPostMatch = (from o in cachedPostPages
+                                           where o.cachedPageUniqueThreadID == cachedPage.cachedPageUniqueThreadID
+                                           && o.pageNumber == (cachedPage.pageNumber + 1)
+                                           select o).FirstOrDefault();
+                    if (cachedPostMatch == null)
+                    {
+                        int nextPostNumber = (20 * (cachedPage.pageNumber) + 1);
+                        Uri postLinkUri = new Uri(cachedPage.nextThreadPage.ToString());
+                        tlCachedPostPage cachedNextPage = getCachedPage(cachedPostPages, postLinkUri.ToString(), nextPostNumber);
+                        Console.WriteLine("     Reading next page from the web...");
+                        //cachedNextPage.pageNumber = cachedPage.pageNumber + 1;
+                        //cachedNextPage.cachedPageUniqueThreadID = cachedPage.cachedPageUniqueThreadID;
+
+                        HttpClient nextCommentClient = new HttpClient();
+                        await grabPostAndCachePage(cachedNextPage, nextCommentClient, postLinkUri, nextPostNumber, tlPeople);
+                    }
+                }
+
+            }
+            else
+            {
+                Console.WriteLine("Reading page from the cache...");
+
+                //If it doesn't need a refresh... grab the existing post object
+                //commentText = cachedPage.posts.Where(s => s.commentNumber == postNumber).FirstOrDefault().postContent;
+                requestedPost = cachedPage.posts.Where(s => s.commentNumber == postNumber).FirstOrDefault();
+            }
+            return requestedPost;
+        }
+
+        /// <summary>
+        /// Returns a cached page for a post if a cached page exists, or creates one if it doesn't.
+        /// </summary>
+        /// <param name="cachedPostPages">The list of cached pages.</param>
+        /// <param name="thread_Uri_stub">The Uri stub of the thread URL; that is, everything before "?page="</param>
+        /// <param name="postNumber">The post number you are retrieving the cached page for</param>
+        /// <returns></returns>
         private static tlCachedPostPage getCachedPage(List<tlCachedPostPage> cachedPostPages, string thread_Uri_stub, int postNumber) //You should overload this to take a post object
         {
             int UniqueThreadID = threadIdFromThreadUriString(thread_Uri_stub);
@@ -516,7 +628,16 @@ namespace ConsoleApplication1
                                          select u);
 
             //Items.Where( i => i.TestList.All(li => li.State == 2))
-            var match = CachedPagesThisThread.Where(q => q.posts.Any(li => li.commentNumber == postNumber)).FirstOrDefault();
+            tlCachedPostPage match = new tlCachedPostPage();
+
+            if (CachedPagesThisThread.FirstOrDefault() != null)
+            {
+                match = CachedPagesThisThread.Where(q => q.posts.Any(li => li.commentNumber == postNumber)).FirstOrDefault();
+            }
+            else
+            {
+                match = null;
+            }
 
             //Did you find a matching post result?
             if (match == null)
@@ -542,9 +663,27 @@ namespace ConsoleApplication1
             }    
         }
 
+        private static tlCachedPostPage getCachedPage(List<tlCachedPostPage> cachedPostPages, tlPostObject postObject) //Overload for post object
+        {
+            //This doesn't work right now because I can't get the Uri stub directly from the post object.
+            string Uri_thread_stub = ThreadStubStringFromThreadPageUri(postObject.commentUri);
+            return getCachedPage(cachedPostPages, Uri_thread_stub, postObject.commentNumber);
+        }
+
         static Uri tlPostUriFromTlUsername(string tlUsername)
         {
             return new Uri("http://www.teamliquid.net/forum/search.php?q=&t=c&f=-1&u=" + tlUsername + "&gb=date&d=");
+        }
+
+        /// <summary>
+        /// Returns the page number of a comment from that comment's comment number in the thread, based on 20 comments per page.
+        /// </summary>
+        /// <param name="PostNum">The number identifier of the comment in its thread.</param>
+        /// <returns></returns>
+        static int pageNumFromPostNum(int PostNum)
+        {
+            //From Excel, = 1 + (A34-1)/20 - MOD((A34-1), 20)/20
+            return (1 + (PostNum - 1)/20 - ((PostNum - 1) % 20)/20);
         }
 
         private static async Task<tlPostObject> grabPostAndCachePage(tlCachedPostPage cachedPage, HttpClient client, Uri postLink, int postNumber, List<personObject> tlPeople)
@@ -553,6 +692,11 @@ namespace ConsoleApplication1
             
             string threadPage = await HTMLUtilities.getHTMLStringFromUriAsync(client, postLink);
             string returnString = null;
+
+            if (threadPage == null)
+            {
+                return null;
+            }
 
             //Scrape the unique thread ID
             string threadLinkBlock = HTMLUtilities.StringFromTag(threadPage, "<link rel=\"canonical\"", "</head>");
@@ -786,7 +930,14 @@ namespace ConsoleApplication1
 
             cachedPage.pageNumber = currentPageNumber;
 
+            if (returnPost.commentNumber == 0)
+            {
+                return null;
+            }
+            else
+            {
             return returnPost;
+            }
         }
 
         private static int threadIdFromThreadUriString(string postLinkString)
