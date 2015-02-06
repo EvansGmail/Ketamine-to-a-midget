@@ -138,7 +138,7 @@ namespace ConsoleApplication1
                             }
                             
                             HttpClient client2 = new HttpClient();
-                            List<tlPostObject> listOfReturnedPosts = grabUsersTlPosts(personForPosts, client2, cachedPostPages, 10, tlPeople).Result;
+                            List<tlPostObject> listOfReturnedPosts = grabUsersTlPosts(personForPosts, client2, cachedPostPages, 4, tlPeople).Result;
                             
                             int countPosts = 1;
 
@@ -155,7 +155,8 @@ namespace ConsoleApplication1
 
                             Console.WriteLine("Do you want to: \n" +
                                                "     A. View a post in situ on a thread page? \n" +
-                                               "     B. Return to the Main Menu?");
+                                               "     B. Return to the Main Menu?" + 
+                                               "     C. Experimental in situ Viewer");
                             string inkey3 = Console.ReadLine().ToUpper();
                             Console.WriteLine();
                             switch (inkey3)
@@ -299,6 +300,47 @@ namespace ConsoleApplication1
                                     }
                                     break;
                                 case "B":
+                                    break;
+                                case "C":
+                                    Console.WriteLine("Type the number of the comment you want to see in context.");
+                                    Console.WriteLine();
+                                    int inkey6 = Convert.ToInt32(Console.ReadLine().ToUpper());
+                                    Console.WriteLine();
+
+                                    int threadID_ex = listOfReturnedPosts.ElementAt(inkey6 - 1).uniqueThreadId;
+                                    Console.WriteLine(threadID_ex.ToString());
+                                    int postID_ex = listOfReturnedPosts.ElementAt(inkey6 - 1).commentNumber;
+                                    Console.WriteLine(postID_ex.ToString());
+                                    Uri postUri_ex = listOfReturnedPosts.ElementAt(inkey6 - 1).commentUri;
+                                    Console.WriteLine(postUri_ex.ToString());
+                                    string threadName_ex = listOfReturnedPosts.ElementAt(inkey6 - 1).threadTitle;
+                                    Console.WriteLine(threadName_ex);
+                                    string thread_Uri_Stub_ex = listOfReturnedPosts.ElementAt(inkey6 - 1).threadStubUri.ToString();
+                                    Console.WriteLine(thread_Uri_Stub_ex);
+                                    Console.WriteLine();
+                                    int offSet_ex = 0;
+                                    Console.WriteLine("Hit any key to continue...");
+                                    var inkey7 = Console.ReadKey();
+
+                                    while (inkey7.KeyChar.ToString() != "Q")
+                                    {
+                                        //Grabs the single Post
+                                        tlPostObject postFromUri_ex = getComment(thread_Uri_Stub_ex, (postID_ex + offSet_ex), cachedPostPages, tlPeople).Result;
+
+                                        Console.WriteLine(postFromUri_ex.postContent);
+                                        Console.WriteLine();
+                                        Console.WriteLine("Press > and < to navigate posts. Q to quit.");
+
+                                        inkey7 = Console.ReadKey();
+                                        if (inkey7.KeyChar.ToString() == "<")
+                                        {
+                                            offSet_ex--;
+                                        }
+                                        else if (inkey7.KeyChar.ToString() == ">")
+                                        {
+                                            offSet_ex++;
+                                        }
+                                    }
                                     break;
                                 default:
                                     break;
@@ -535,7 +577,6 @@ namespace ConsoleApplication1
             //as the cachedPageObject's list, so as long as you're updating the object information (and not replacing with new objects,)
             //it should just work.
 
-
             int threadPageNumber = pageNumFromPostNum(postNumber);
             Uri thread_page_Uri = new Uri(thread_Uri_stub + "?page=" + threadPageNumber.ToString());
 
@@ -546,6 +587,7 @@ namespace ConsoleApplication1
                 Console.WriteLine("Reading page from the web...");
 
                 requestedPost = await grabPostAndCachePage(cachedPage, commentClient, thread_page_Uri, postNumber, tlPeople);
+                requestedPost.threadStubUri = new Uri(thread_Uri_stub);
                 cachedPage.needsRefresh = false;
 
                 if (requestedPost == null)
@@ -1647,6 +1689,7 @@ namespace ConsoleApplication1
             /// Creates an object reference to a specific Comment or Post on TeamLiquid.
             /// </summary>
             /// <param name="uniqueThreadId">The unique integer identifier tied to the TeamLiquid.net/forum thread in which this Post or Comment appears</param>
+            /// <param name="threadStubUri">A Uri object pointing to the first page of the thread (so, everything before "?page=")</param>
             /// <param name="threadTitle">The string title of the thread from the TeamLiquid.net forums in which this Post or Comment appears</param>
             /// <param name="threadSection">The Teamliquid.net sub-forum on which the thread for this Post or Comment appears</param>
             /// <param name="commentUri">The Uri address object linking directly to this Post or Comment</param>
@@ -1654,6 +1697,7 @@ namespace ConsoleApplication1
             /// <param name="postHTMLContent">A string containing the HTML markup content of the Post or Comment</param>
             /// <param name="Author">The author of the post, if any</param>
             public tlPostObject(int uniqueThreadId,
+                                Uri threadStubUri,
                                 string threadTitle,
                                 string threadSection,
                                 Uri commentUri,
@@ -1672,6 +1716,13 @@ namespace ConsoleApplication1
             {
                 get { return UniqueID; }
                 set { UniqueID = value;}
+            }
+
+            private Uri threadStubUriValue;
+            public Uri threadStubUri
+            {
+                get { return threadStubUriValue; }
+                set { threadStubUriValue = value; }
             }
 
             private string threadTitleValue;
