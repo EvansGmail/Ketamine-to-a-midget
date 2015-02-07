@@ -321,13 +321,18 @@ namespace ConsoleApplication1
                                     int offSet_ex = 0;
                                     Console.WriteLine("Hit any key to continue...");
                                     var inkey7 = Console.ReadKey();
-
+                                    
                                     while (inkey7.KeyChar.ToString() != "Q")
                                     {
+                                        Console.Clear();
+                                        
                                         //Grabs the single Post
                                         tlPostObject postFromUri_ex = getComment(thread_Uri_Stub_ex, (postID_ex + offSet_ex), cachedPostPages, tlPeople).Result;
 
+                                        Console.WriteLine("-------------------------------------------------------------------------------");
+                                        Console.WriteLine("Comment #" + postFromUri_ex.commentNumber + " by user " + postFromUri_ex.Author);
                                         Console.WriteLine(postFromUri_ex.postContent);
+                                        Console.WriteLine("-------------------------------------------------------------------------------");
                                         Console.WriteLine();
                                         Console.WriteLine("Press > and < to navigate posts. Q to quit.");
 
@@ -404,12 +409,42 @@ namespace ConsoleApplication1
         static personObject personObjectFromString(string personString, List<personObject> tlPeople)
         {
             var person = (from u in tlPeople
-                          where u.liquipediaName.ToUpper() == personString.ToUpper()
+                          where u.liquipediaName != null &&
+                          u.liquipediaName.ToUpper() == personString.ToUpper()
                           select u);
             if (person.FirstOrDefault() == null)
             {
-                Console.WriteLine("Person not found!");
-                return null;
+                Console.WriteLine("Person not found in Liquipedia. Checking for TL.net forum profile...");
+                var person2 = (from v in tlPeople
+                               where v.tlName != null && 
+                               v.tlName.ToUpper() == personString.ToUpper()
+                               select v);
+                if (person2.FirstOrDefault() == null)
+                {
+                    Console.WriteLine("No saved TL.net profile. Searching TL.net...");
+                    HttpClient tlForumClient = new HttpClient();
+                    string profileString = HTMLUtilities.getHTMLStringFromUriAsync(tlForumClient, new Uri("http://www.teamliquid.net/forum/profile.php?user=" + personString)).Result;
+                    if (profileString == null)
+                    { 
+                        return null;
+                    }
+                    else
+                    {
+                        //Create a new personObject based on the TL.net profile page alone
+                        personObject tlPersonObj = new personObject();
+                        tlPersonObj.tlName = personString;
+                        string numPostsTags = HTMLUtilities.StringFromTag(profileString, "<a href='search.php?q=&amp;t=c&amp;f=-1&u=", "</a>");
+                        string numPosts = HTMLUtilities.InnerText(numPostsTags, 0, numPostsTags.Length);
+                        tlPersonObj.tlTotalPosts = Convert.ToInt32(numPosts);
+                        tlPersonObj.tlForumURI = new Uri("http://www.teamliquid.net/forum/profile.php?user=" + personString);
+                        tlPeople.Add(tlPersonObj);
+                        return tlPersonObj;
+                    }
+                }
+                else
+                {
+                    return person2.FirstOrDefault();
+                }
             }
             else
             {
@@ -427,49 +462,52 @@ namespace ConsoleApplication1
             }
             else
             {
-            //1. Load async the players teamliquid.net profile URL
-            using (var client = new HttpClient())
-            {
-                Uri playerDetailUri = new Uri(person.liquipediaURI.ToString());
-                    
-                var response = await client.GetAsync(playerDetailUri);
-
-                if (response.IsSuccessStatusCode)
+                if (person.liquipediaURI != null)
                 {
-                    UTF8Encoding utf8 = new UTF8Encoding();
-                    //string responseString = utf8.GetString(response);
-                    string responseString = await response.Content.ReadAsStringAsync();
-
-                    string infoBox_tags = HTMLUtilities.StringFromTag(responseString, "<div class=\"infobox-center infobox-icons\">", "</div>");
-
-                    //2. Scrape that page for the rest of the detail properties
-                    //3. Fill those (switch like the main list scraper)
-
-                    person.tlForumURI = HTMLUtilities.hrefUriFromTitle(infoBox_tags, "TeamLiquid.net Profile");
-                    if (person.tlForumURI != null) person.tlName = tlNameFromURI(person.tlForumURI);
-                    person.twitterURI = HTMLUtilities.hrefUriFromTitle(infoBox_tags, "Twitter");
-                    if (person.twitterURI != null) person.twitterName = twitterNameFromURI(person.twitterURI);
-                    person.fbURI = HTMLUtilities.hrefUriFromTitle(infoBox_tags, "Facebook");
-                    if (person.fbURI != null) person.fbName = fbNameFromURI(person.fbURI);
-                    person.twitchURI = HTMLUtilities.hrefUriFromTitle(infoBox_tags, "Twitch Stream");
-                    if (person.twitchURI != null) person.twitchName = twitchIDfromURI(person.twitchURI);
-                    person.redditProfileURI = HTMLUtilities.hrefUriFromTitle(infoBox_tags, "Reddit Profile");
-                    if (person.redditProfileURI != null) person.redditUsername = redditNameFromURI(person.redditProfileURI);
-
-                    //There are some other tags, e.g., battle.net urls, that show up later under "external links"
-                    //Since I really want to move on to pulling the posts from TL, I'm putting off grabbing that
-                    //stuff until later.
-
-                    //If a Tl.net profile URI exists, scrape that page for information (how often posts, total posts (I think I should serialize this), etc.)
-                    if (person.tlForumURI != null)
+                    //1. Load async the players teamliquid.net profile URL
+                    using (var client = new HttpClient())
                     {
-                        string tlProfilePageString = await HTMLUtilities.getHTMLStringFromUriAsync(client, person.tlForumURI);
-                        string numPostsTags = HTMLUtilities.StringFromTag(tlProfilePageString, "<a href='search.php?q=&amp;t=c&amp;f=-1&u=", "</a>");
-                        string numPosts = HTMLUtilities.InnerText(numPostsTags, 0, numPostsTags.Length);
-                        person.tlTotalPosts = Convert.ToInt32(numPosts);
+                        Uri playerDetailUri = new Uri(person.liquipediaURI.ToString());
+
+                        var response = await client.GetAsync(playerDetailUri);
+
+                        if (response.IsSuccessStatusCode)
+                        {
+                            UTF8Encoding utf8 = new UTF8Encoding();
+                            //string responseString = utf8.GetString(response);
+                            string responseString = await response.Content.ReadAsStringAsync();
+
+                            string infoBox_tags = HTMLUtilities.StringFromTag(responseString, "<div class=\"infobox-center infobox-icons\">", "</div>");
+
+                            //2. Scrape that page for the rest of the detail properties
+                            //3. Fill those (switch like the main list scraper)
+
+                            person.tlForumURI = HTMLUtilities.hrefUriFromTitle(infoBox_tags, "TeamLiquid.net Profile");
+                            if (person.tlForumURI != null) person.tlName = tlNameFromURI(person.tlForumURI);
+                            person.twitterURI = HTMLUtilities.hrefUriFromTitle(infoBox_tags, "Twitter");
+                            if (person.twitterURI != null) person.twitterName = twitterNameFromURI(person.twitterURI);
+                            person.fbURI = HTMLUtilities.hrefUriFromTitle(infoBox_tags, "Facebook");
+                            if (person.fbURI != null) person.fbName = fbNameFromURI(person.fbURI);
+                            person.twitchURI = HTMLUtilities.hrefUriFromTitle(infoBox_tags, "Twitch Stream");
+                            if (person.twitchURI != null) person.twitchName = twitchIDfromURI(person.twitchURI);
+                            person.redditProfileURI = HTMLUtilities.hrefUriFromTitle(infoBox_tags, "Reddit Profile");
+                            if (person.redditProfileURI != null) person.redditUsername = redditNameFromURI(person.redditProfileURI);
+
+                            //There are some other tags, e.g., battle.net urls, that show up later under "external links"
+                            //Since I really want to move on to pulling the posts from TL, I'm putting off grabbing that
+                            //stuff until later.
+
+                            //If a Tl.net profile URI exists, scrape that page for information (how often posts, total posts (I think I should serialize this), etc.)
+                            if (person.tlForumURI != null)
+                            {
+                                string tlProfilePageString = await HTMLUtilities.getHTMLStringFromUriAsync(client, person.tlForumURI);
+                                string numPostsTags = HTMLUtilities.StringFromTag(tlProfilePageString, "<a href='search.php?q=&amp;t=c&amp;f=-1&u=", "</a>");
+                                string numPosts = HTMLUtilities.InnerText(numPostsTags, 0, numPostsTags.Length);
+                                person.tlTotalPosts = Convert.ToInt32(numPosts);
+                            }
+                        }
                     }
-                }    
-            }
+                }
             //4. Display the details (will ultimately return)
             if (person.tlName != null) Console.WriteLine(person.tlName + " on teamliquid: " + person.tlForumURI);
             if (person.twitterName != null) Console.WriteLine(person.twitterName + " on Twitter: " + person.twitterURI);
@@ -617,6 +655,7 @@ namespace ConsoleApplication1
 
                         HttpClient prevCommentClient = new HttpClient();
                         await grabPostAndCachePage(cachedPrevPage, prevCommentClient, postLinkUri, prevPostNumber, tlPeople);
+                        cachedPrevPage.needsRefresh = false;
                     }
 
                 }
@@ -638,6 +677,7 @@ namespace ConsoleApplication1
 
                         HttpClient nextCommentClient = new HttpClient();
                         await grabPostAndCachePage(cachedNextPage, nextCommentClient, postLinkUri, nextPostNumber, tlPeople);
+                        cachedNextPage.needsRefresh = false;
                     }
                 }
 
@@ -860,6 +900,11 @@ namespace ConsoleApplication1
                 if (tempPostObject != null)
                 {
                     tempPostObject.postContent = commentHTML;
+                    if (singlePostNumber == postNumber)
+                    {
+                        returnString = commentHTML;
+                        returnPost = tempPostObject;
+                    }
                 }
                 else
                 {
@@ -875,6 +920,7 @@ namespace ConsoleApplication1
                     tempPostObject.threadSection = postSubforum;
                     tempPostObject.threadTitle = thread_title;
                     tempPostObject.uniqueThreadId = thread_id;
+                    tempPostObject.threadStubUri = new Uri(ThreadStubStringFromThreadPageUri(new Uri(postLinkString)));
                     tempPostObject.Author = authorName;
                 
                     if (singlePostNumber == postNumber)
@@ -917,6 +963,7 @@ namespace ConsoleApplication1
                     {
                         //Check to see if poat (20 x (2-1)) + 1 = 21 is cached
                         //If not, scrape the next page for post number 21
+                        //I think I'm actually doing this check elsewhere. Review this block for culling.
                     }
                 }
                 else
@@ -1013,7 +1060,8 @@ namespace ConsoleApplication1
         private static void unfollowAndStopSerializing(string personToUnfollow, List<personObject> tlPeople, string fileName)
         {
             var personToUnfollowObj = (from u in tlPeople
-                                       where u.liquipediaName.ToUpper() == personToUnfollow
+                                       where (u.liquipediaName != null && u.liquipediaName.ToUpper() == personToUnfollow)
+                                       || (u.tlName != null && u.tlName.ToUpper() == personToUnfollow)
                                        select u);
             if (personToUnfollowObj.FirstOrDefault().Equals(null))
             {
@@ -1025,7 +1073,14 @@ namespace ConsoleApplication1
                 //Check to see if person already not being followed
                 if (!personToUnfollowObj.FirstOrDefault().followed)
                 {
-                    Console.WriteLine("You're not even following " + personToUnfollowObj.FirstOrDefault().liquipediaName + "!");
+                    if (personToUnfollowObj.FirstOrDefault().liquipediaName != null)
+                    { 
+                        Console.WriteLine("You're not even following " + personToUnfollowObj.FirstOrDefault().liquipediaName + "!");
+                    }
+                    else if (personToUnfollowObj.FirstOrDefault().tlName != null)
+                    {
+                        Console.WriteLine("You're not even following " + personToUnfollowObj.FirstOrDefault().tlName + "!");
+                    }
                 }
                 else
                 {
@@ -1037,7 +1092,7 @@ namespace ConsoleApplication1
                         long objStartPosition = s.Position;
                         personObject v = (personObject)formatter.Deserialize(s);
 
-                        if (v.liquipediaName == personToUnfollowObj.FirstOrDefault().liquipediaName)
+                        if ((v.liquipediaName == personToUnfollowObj.FirstOrDefault().liquipediaName) || (v.tlName == personToUnfollowObj.FirstOrDefault().tlName))
                         {
                             long nextObjPosition = s.Position;
                             //Need to remove data from objStartPosition to (s.Position - 1). So, copy everything from s.Position to the end, and move is to objStartPosition, then truncate
@@ -1060,7 +1115,14 @@ namespace ConsoleApplication1
 
                     }
                     s.Close();
-                    Console.WriteLine("Successfully unfollowed " + personToUnfollowObj.First().liquipediaName);
+                    if (personToUnfollowObj.First().liquipediaName != null)
+                    { 
+                        Console.WriteLine("Successfully unfollowed " + personToUnfollowObj.First().liquipediaName);
+                    }
+                    else if (personToUnfollowObj.First().tlName != null)
+                    {
+                        Console.WriteLine("Successfully unfollowed " + personToUnfollowObj.First().tlName);
+                    }
                 }
                 return;
             }
@@ -1069,7 +1131,8 @@ namespace ConsoleApplication1
         private static void followAndSerialize(string personToFollow, List<personObject> tlPeople, string fileName)
         {
             var personToFollowObj = (from u in tlPeople
-                                     where u.liquipediaName.ToUpper() == personToFollow
+                                     where (u.liquipediaName != null && u.liquipediaName.ToUpper() == personToFollow)
+                                     || (u.tlName != null && u.tlName.ToUpper() == personToFollow)
                                      select u);
             if (personToFollowObj.Count() != 1)
             {
@@ -1079,18 +1142,33 @@ namespace ConsoleApplication1
             else
             {
                 //Check to see if already followed
-                if (personToFollowObj.FirstOrDefault().followed)
+                personObject followPersonObject = personToFollowObj.FirstOrDefault();
+                if (followPersonObject.followed)
                 {
-                    Console.WriteLine("You're already following " + personToFollowObj.FirstOrDefault().liquipediaName + "!");
+                    if (followPersonObject.liquipediaName != null)
+                    { 
+                        Console.WriteLine("You're already following " + followPersonObject.liquipediaName + "!");
+                    }
+                    else if (followPersonObject.tlName != null)
+                    {
+                        Console.WriteLine("You're already following " + followPersonObject.tlName + "!");
+                    }
                 }
                 else
                 {
-                    personToFollowObj.FirstOrDefault().followed = true;
+                    followPersonObject.followed = true;
                     FileStream s = new FileStream(fileName, FileMode.Append);
                     IFormatter formatter = new BinaryFormatter();
-                    formatter.Serialize(s, personToFollowObj.FirstOrDefault());
+                    formatter.Serialize(s, followPersonObject);
                     s.Close();
-                    Console.WriteLine("Successfully followed " + personToFollowObj.First().liquipediaName);
+                    if (followPersonObject.liquipediaName != null)
+                    { 
+                        Console.WriteLine("Successfully followed " + followPersonObject.liquipediaName);
+                    }
+                    else if (followPersonObject.tlName != null)
+                    {
+                        Console.WriteLine("Successfully followed" + followPersonObject.tlName);
+                    }
                 }
                 return;
             }
@@ -1108,17 +1186,36 @@ namespace ConsoleApplication1
                     {
                         personObject t = (personObject)formatter.Deserialize(d);
 
+                        
                         var personToFollowObj = (from u in tlPeople
-                                                 where u.liquipediaName.ToUpper() == t.liquipediaName.ToUpper()
+                                                 where (u.liquipediaName != null && u.liquipediaName.ToUpper() == t.liquipediaName.ToUpper())
                                                  select u);
-                        if (personToFollowObj.Count() != 1)
+                        if (t.liquipediaName == null)
                         {
-                            Console.WriteLine("Person not found!");
+                            if (t.tlName != null)
+                            {
+                                //Re=follow teamliquid.net account person
+                                //You can either re-scrape their player page, or serialize their TL.net page
+                                //Keep in mind you're going to serialize their number of posts anyway...
+                                tlPeople.Add(t);
+                                Console.WriteLine("Successfully followed " + t.tlName);
+                            }
+                            else
+                            { 
+                                Console.WriteLine("Person not found!");
+                            }
                         }
                         else
                         {
                             personToFollowObj.FirstOrDefault().followed = true;
-                            Console.WriteLine("Successfully followed " + personToFollowObj.First().liquipediaName);
+                            if (personToFollowObj.First().liquipediaName != null)
+                            { 
+                                Console.WriteLine("Successfully followed " + personToFollowObj.First().liquipediaName);
+                            }
+                            else if (personToFollowObj.First().tlName != null)
+                            {
+                                Console.WriteLine("Successfully followed " + personToFollowObj.First().tlName);
+                            }
                         }
                     }
                 }
@@ -1548,7 +1645,7 @@ namespace ConsoleApplication1
                 set { twitchURIvalue = value; }
             }
 
-            //Serializing only this property and the name
+            //Serializing only this property and the names
             private bool followedvalue;
             public bool followed
             {
@@ -1563,7 +1660,8 @@ namespace ConsoleApplication1
                 // Use the AddValue method to specify serialized values.
                 info.AddValue("followed", followedvalue, typeof(bool));
                 info.AddValue("liquipediaName", liquipediaName, typeof(string));
-
+                info.AddValue("tlName", tlName, typeof(string));
+                info.AddValue("tlForumURI", tlForumURI, typeof(Uri));
             }
 
             // The special constructor is used to deserialize values. 
@@ -1572,12 +1670,16 @@ namespace ConsoleApplication1
                 // Reset the property value using the GetValue method.
                 followedvalue = (bool) info.GetValue("followed", typeof(bool));
                 liquipediaName = (string)info.GetValue("liquipediaName", typeof(string));
+                tlName = (string)info.GetValue("tlName", typeof(string));
+                tlForumURI = (Uri)info.GetValue("tlForumURI", typeof(Uri));
             }
 
             public void displayPersonProperties()
             {
                 Console.WriteLine(this.liquipediaName);
                 Console.WriteLine(this.liquipediaURI);
+                Console.WriteLine(this.tlName);
+                Console.WriteLine(this.tlForumURI);
                 Console.WriteLine(this.irlName);
                 Console.WriteLine(this.teamName);
                 Console.WriteLine(this.country);
