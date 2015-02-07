@@ -86,18 +86,23 @@ namespace HTMLUtils
 
         public static Uri hrefUriFromTitle(string sourceString, string title_name)
         {
-            int title_index = sourceString.IndexOf("title=\"" + title_name + "\"");
+            return hrefUriFromParameter(sourceString, title_name, "title");
+        }
+
+        public static Uri hrefUriFromParameter(string sourceString, string param_value, string param_name)
+        {
+            int title_index = sourceString.IndexOf(param_name + "=\"" + param_value + "\"");
             if (title_index != -1)
             {
                 int tag_index = sourceString.LastIndexOf("<a href=\"", title_index);
                 int href_start = sourceString.IndexOf("\"", tag_index) + 1;
-                int href_end = sourceString.IndexOf("\"", href_start);
+                int href_end = sourceString.IndexOf("\"", href_start + 1);
                 int href_length = href_end - href_start;
                 return new Uri(sourceString.Substring(href_start, href_length));
             }
             else
             {
-                Console.WriteLine("No " + title_name + " found!");
+                Console.WriteLine("No " + param_name + " found!");
                 return null;
             }
         }
