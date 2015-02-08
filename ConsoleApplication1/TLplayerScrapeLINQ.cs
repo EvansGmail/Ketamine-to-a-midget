@@ -423,14 +423,16 @@ namespace ConsoleApplication1
                     else
                     {
                         //Create a new personObject based on the TL.net profile page alone
+                        //Keep in mind that information is typically scraped from a Liquipedia page, so this will get overwritten there.
                         personObject tlPersonObj = new personObject();
+                        //Looking to scrape <title>Public Profile for TheDwf</title>
                         
-                        string tlNameUri = 
-                        tlPersonObj.tlName = tlNameFromURI(tlNameUri); //Seems silly to get a tlName from a tlName, but this fixes case mismatches
+                        tlPersonObj.tlName = getTextBetween(profileString, "<title>Public Profile for ", "</title>");
+                        
+                        tlPersonObj.tlForumURI = new Uri("http://www.teamliquid.net/forum/profile.php?user=" + tlPersonObj.tlName);
                         string numPostsTags = HTMLUtilities.StringFromTag(profileString, "<a href='search.php?q=&amp;t=c&amp;f=-1&u=", "</a>");
                         string numPosts = HTMLUtilities.InnerText(numPostsTags, 0, numPostsTags.Length);
                         tlPersonObj.tlTotalPosts = Convert.ToInt32(numPosts);
-                        tlPersonObj.tlForumURI = new Uri("http://www.teamliquid.net/forum/profile.php?user=" + personString);
                         tlPeople.Add(tlPersonObj);
                         return tlPersonObj;
                     }
@@ -444,6 +446,13 @@ namespace ConsoleApplication1
             {
                 return person.FirstOrDefault();
             }
+        }
+
+        private static string getTextBetween(string profileString, string openTag, string closeTag)
+        {
+            string tlNameTag = HTMLUtilities.StringFromTag(profileString, openTag, closeTag);
+            string tlScrapedName = tlNameTag.Substring(openTag.Length, tlNameTag.Length - openTag.Length - closeTag.Length);
+            return tlScrapedName;
         }
 
         static async Task<personObject> extractPersonDetail(string personForDetailView, List<personObject> tlPeople)
