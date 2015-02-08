@@ -423,7 +423,6 @@ namespace ConsoleApplication1
                     else
                     {
                         //Create a new personObject based on the TL.net profile page alone
-                        //Keep in mind that information is typically scraped from a Liquipedia page, so this will get overwritten there.
                         personObject tlPersonObj = new personObject();
                         //Looking to scrape <title>Public Profile for TheDwf</title>
                         
@@ -1362,8 +1361,8 @@ namespace ConsoleApplication1
                                             switch (i)
                                             {
                                                 case 1:
-                                                    //tempPerson.liquipediaName = td_info;
-                                                    tempPerson.liquipediaName = HTMLUtilities.StringFromParameter(td_tags, "title");
+                                                    //tempPerson.liquipediaName = HTMLUtilities.StringFromParameter(td_tags, "title");
+                                                    tempPerson.liquipediaName = HTMLUtilities.InnerText(td_tags).Trim();
                                                     tempPerson.liquipediaURI = new Uri("http://wiki.teamliquid.net" + HTMLUtilities.grabHREF(td_tags));
                                                     break;
                                                 case 2:
