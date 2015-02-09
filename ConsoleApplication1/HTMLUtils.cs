@@ -102,7 +102,7 @@ namespace HTMLUtils
             }
             else
             {
-                Console.WriteLine("No " + param_name + " found!");
+                //Console.WriteLine("No " + param_name + " found!");
                 return null;
             }
         }
@@ -146,7 +146,7 @@ namespace HTMLUtils
 
             if (innerTextString.Length == 0)
             {
-                return "No Matching Text found";
+                return null;
             }
             else
                 return innerTextString;
