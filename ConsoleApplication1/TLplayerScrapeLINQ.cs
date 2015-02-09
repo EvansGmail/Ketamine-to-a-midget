@@ -153,153 +153,14 @@ namespace ConsoleApplication1
 
                         Console.WriteLine("Do you want to: \n" +
                                             "     A. View a post in situ on a thread page? \n" +
-                                            "     B. Return to the Main Menu?" + 
-                                            "     C. Experimental in situ Viewer");
+                                            "     Q. Return to the Main Menu?");
                         string inkey3 = Console.ReadLine().ToUpper();
                         Console.WriteLine();
                         switch (inkey3)
 	                    {
+                            case "Q":
+                                break;
                             case "A":
-                                Console.WriteLine("Type the number of the comment you want to see in context.");
-                                Console.WriteLine();
-                                int inkey4 = Convert.ToInt32(Console.ReadLine().ToUpper());
-                                Console.WriteLine(inkey4.ToString());
-                                int threadID = listOfReturnedPosts.ElementAt(inkey4 - 1).uniqueThreadId;
-                                Console.WriteLine(threadID.ToString());
-                                int postID = listOfReturnedPosts.ElementAt(inkey4 - 1).commentNumber;
-                                Console.WriteLine(postID.ToString());
-                                string threadName = listOfReturnedPosts.ElementAt(inkey4 - 1).threadTitle;
-                                int offSet = 0;
-
-                                //Grabs all the cached pages for this thread
-                                List<tlCachedPostPage> cachedThreadPageMatches = (from m in cachedPostPages
-                                                        where m.cachedPageUniqueThreadID == threadID
-                                                        select m).ToList();
-
-                                Uri thread_Uri = cachedThreadPageMatches.First().cachedPageRemoteUri;
-                                string thread_Uri_stub = ThreadStubStringFromThreadPageUri(thread_Uri);
-                                string[] headings = { "Previous Comment:", "Selected Comment:", "Next Comment:" };
-                                string inkey5 = ">";
-
-                                tlPostObject[] threePostArray = new tlPostObject[3];
-
-                                while ((inkey5 == "<") | (inkey5 == ">"))
-                                {
-                                    Console.Clear();
-                                    Console.WriteLine("Thread: " + threadName);
-                                    bool canNavBack = true;
-                                    bool canNavForward = true;
-
-                                    for (int i = 0; i < 3; i++)
-                                    {
-                                        tlCachedPostPage cachedThreadPageMatch = null;
-                                        if (threePostArray[i] == null)
-                                        { 
-                                        //Finds the thread page, then the post, for the specific comment number sought
-                                        cachedThreadPageMatch = (from l in cachedThreadPageMatches
-                                                                    where l.posts.Any(li => li.commentNumber == (postID - 1 + i + offSet))
-                                                                    select l).FirstOrDefault();
-                                        }
-
-                                        if ((cachedThreadPageMatch != null) | (threePostArray[i] != null))
-                                        {
-                                        int PageNum = pageNumFromPostNum(postID - 1 + i + offSet);
-                                        Console.WriteLine("Page number: " + PageNum + ", Post number: " + (postID - 1 + i + offSet).ToString());
-
-                                        if (threePostArray[i] == null) //Might already have the post from earlier
-                                        { 
-                                            //Look for a post on the cached page
-                                            tlPostObject cachedPostMatch = (from k in cachedThreadPageMatch.posts
-                                                                        where k.commentNumber == (postID - 1 + i + offSet)
-                                                                        select k).FirstOrDefault();
-                                            
-                                            threePostArray[i] = cachedPostMatch;
-                                        }
-
-                                        Console.WriteLine();
-                                        Console.WriteLine(headings[i]);
-                                        Console.WriteLine();
-                                        Console.WriteLine("Comment by " + threePostArray[i].Author + " on page " + PageNum);
-                                        Console.WriteLine("Comment #" + threePostArray[i].commentNumber);
-                                        Console.WriteLine();
-                                        Console.WriteLine(threePostArray[i].postContent);
-                                        Console.WriteLine();
-                                        Console.WriteLine("----------");
-                                        Console.WriteLine();
-                                        }
-                                        else if (postID - 1 + i + offSet == 0) //The beginning of the thread
-                                        {
-                                            Console.WriteLine("!-- Beginning of Thread --!");
-                                            Console.WriteLine();
-                                            canNavBack = false;
-                                        }
-                                        else //You hit the end or beginning of the cache; but you don't know which.
-                                        {
-                                            threePostArray[i] = getComment(thread_Uri_stub, postID - 1 + i + offSet, cachedPostPages, tlPeople).Result;
-
-                                            if (threePostArray[i] == null)
-                                            {
-                                                Console.WriteLine("!-- End of the Thread --!");
-                                                Console.WriteLine();
-                                                canNavForward = false;
-                                            }
-                                            else
-                                            {
-                                                cachedThreadPageMatches.Add(getCachedPage(cachedPostPages, thread_Uri_stub, postID - 1 + i + offSet));
-                                                    
-                                                int extraPageNum = pageNumFromPostNum(postID - 1 + i + offSet);
-                                                Console.WriteLine("Page number: " + extraPageNum.ToString() + ", Post number: " + (postID - 1 + i + offSet).ToString());
-
-                                                Console.WriteLine();
-                                                Console.WriteLine(headings[i]);
-                                                Console.WriteLine();
-                                                Console.WriteLine("Comment by " + threePostArray[i].Author + " on Page " + extraPageNum.ToString());
-                                                Console.WriteLine("Comment #" + threePostArray[i].commentNumber);
-                                                Console.WriteLine();
-                                                Console.WriteLine(threePostArray[i].postContent);
-                                                Console.WriteLine();
-                                                Console.WriteLine("----------");
-                                                Console.WriteLine();
-                                            }
-                                        }
-                                    }
-                                    
-                                    Console.WriteLine("Choose one of the following:");
-                                    if (canNavForward) Console.WriteLine(">: Move forward one post");
-                                    if (canNavBack) Console.WriteLine("<: Move backward one post");
-                                    Console.WriteLine("Other: Return to Main Menu");
-                                    Console.WriteLine();
-                                    inkey5 = Console.ReadLine();
-
-                                    switch (inkey5)
-                                    {
-                                        case "<":
-                                            if (canNavBack)
-                                            {
-                                                offSet--;
-                                                threePostArray[2] = threePostArray[1];
-                                                threePostArray[1] = threePostArray[0];
-                                                threePostArray[0] = null;
-                                            }
-                                            break;
-                                        case ">":
-                                            if (canNavForward)
-                                            {     
-                                                offSet++;
-                                                threePostArray[0] = threePostArray[1];
-                                                threePostArray[1] = threePostArray[2];
-                                                threePostArray[2] = null;
-                                            }
-                                            break;
-                                        default:
-                                            inkey5 = "Spumoni.";
-                                            break;
-                                    }
-                                }
-                                break;
-                            case "B":
-                                break;
-                            case "C":
                                 Console.WriteLine("Type the number of the comment you want to see in context.");
                                 Console.WriteLine();
                                 int inkey6 = Convert.ToInt32(Console.ReadLine().ToUpper());
@@ -326,9 +187,25 @@ namespace ConsoleApplication1
                                         
                                     //Grabs the single Post
                                     tlPostObject postFromUri_ex = getComment(thread_Uri_Stub_ex, (postID_ex + offSet_ex), cachedPostPages, tlPeople).Result;
+                                    
+                                    var personFollowed = from i in tlPeople
+                                                         where (i.tlName == postFromUri_ex.Author)
+                                                         select i;
+                                    
+                                    string followStar = "";
+                                    string postsTotal = "";
 
+                                    if (personFollowed.FirstOrDefault() != null)
+                                    {
+                                        if (personFollowed.FirstOrDefault().followed == true)
+                                        { 
+                                            followStar = "***";
+                                        }
+                                        postsTotal = ", " + personFollowed.FirstOrDefault().tlTotalPosts.ToString() + " posts";
+                                    }
+                                    
                                     Console.WriteLine("-------------------------------------------------------------------------------");
-                                    Console.WriteLine("Comment #" + postFromUri_ex.commentNumber + " by user " + postFromUri_ex.Author);
+                                    Console.WriteLine("Comment #" + postFromUri_ex.commentNumber + " by user " + postFromUri_ex.Author + followStar + postsTotal);
                                     Console.WriteLine(postFromUri_ex.postContent);
                                     Console.WriteLine("-------------------------------------------------------------------------------");
                                     Console.WriteLine();
@@ -870,6 +747,27 @@ namespace ConsoleApplication1
                 else
                 {
                     authorName = null;
+                }
+
+                //Scrape the total posts for the author, and, if the author is followed, and the number is higher than the recorded number, grab any new posts
+                //<span class='forummsginfo'>&nbsp;<div class='usericon T10'></div>&nbsp;Pokebunny &nbsp; United States. December 16 2014 14:46. Posts 10276</span>
+                string postTotalBlock = HTMLUtilities.StringFromTag(commentBlock, "span class = 'forummsginfo'", "</span>");
+                string postTotalString = getTextBetween(postTotalBlock, "Posts ", "</span>");
+                int postsTotal = Convert.ToInt32(postTotalString);
+
+                if (authorName != null)
+                {
+                    var foundAuthor = from h in tlPeople
+                                      where h.tlName == authorName
+                                      select h;
+                    if ((foundAuthor.FirstOrDefault() != null) && (foundAuthor.FirstOrDefault().followed == true))
+                    {
+                        int postDifference = postsTotal - foundAuthor.FirstOrDefault().tlTotalPosts;
+                        if (postDifference > 0)
+                        {
+
+                        }
+                    }
                 }
 
                 //Scrape the comment text
