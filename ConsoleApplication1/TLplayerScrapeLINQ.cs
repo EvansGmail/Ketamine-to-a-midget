@@ -51,6 +51,7 @@ namespace ConsoleApplication1
                                         "F. Print player detail \n" +
                                         "G. Print player TL posts Summary \n" +
                                         "H. View a summary of Cached thread pages \n" +
+                                        "I. Update all followed player threads \n" +
                                         "Q. Quit");
 
                 Console.WriteLine();
@@ -136,96 +137,103 @@ namespace ConsoleApplication1
                             extractPersonDetail(personForPosts, tlPeople).Wait();
                         }
                             
-                        HttpClient client2 = new HttpClient();
-                        List<tlPostObject> listOfReturnedPosts = grabUsersTlPosts(personForPosts, client2, cachedPostPages, 4, tlPeople).Result;
+                        if (personForPosts.tlName != null)
+                        { 
+                            HttpClient client2 = new HttpClient();
+                            List<tlPostObject> listOfReturnedPosts = grabUsersTlPosts(personForPosts, client2, cachedPostPages, 4, tlPeople).Result;
                             
-                        int countPosts = 1;
+                            int countPosts = 1;
 
-                        foreach (tlPostObject n in listOfReturnedPosts)
-                        {
-                            Console.WriteLine("[" + n.Author + "'s Comment Number " + countPosts + "]");
-                            Console.WriteLine(n.threadTitle);
-                            Console.WriteLine("Comment by " + n.Author);
-                            Console.WriteLine("Comment #" + n.commentNumber + ":");
-                            //Console.WriteLine(n.postContent);
-                            countPosts++;
+                            foreach (tlPostObject n in listOfReturnedPosts)
+                            {
+                                Console.WriteLine("[" + n.Author + "'s Comment Number " + countPosts + "]");
+                                Console.WriteLine(n.threadTitle);
+                                Console.WriteLine("Comment by " + n.Author);
+                                Console.WriteLine("Comment #" + n.commentNumber + ":");
+                                //Console.WriteLine(n.postContent);
+                                countPosts++;
+                                Console.WriteLine();
+                            }
+
+                            Console.WriteLine("Do you want to: \n" +
+                                                "     A. View a post in situ on a thread page? \n" +
+                                                "     Q. Return to the Main Menu?");
+                            string inkey3 = Console.ReadLine().ToUpper();
                             Console.WriteLine();
-                        }
-
-                        Console.WriteLine("Do you want to: \n" +
-                                            "     A. View a post in situ on a thread page? \n" +
-                                            "     Q. Return to the Main Menu?");
-                        string inkey3 = Console.ReadLine().ToUpper();
-                        Console.WriteLine();
-                        switch (inkey3)
-	                    {
-                            case "Q":
-                                break;
-                            case "A":
-                                Console.WriteLine("Type the number of the comment you want to see in context.");
-                                Console.WriteLine();
-                                int inkey6 = Convert.ToInt32(Console.ReadLine().ToUpper());
-                                Console.WriteLine();
-
-                                int threadID_ex = listOfReturnedPosts.ElementAt(inkey6 - 1).uniqueThreadId;
-                                Console.WriteLine(threadID_ex.ToString());
-                                int postID_ex = listOfReturnedPosts.ElementAt(inkey6 - 1).commentNumber;
-                                Console.WriteLine(postID_ex.ToString());
-                                Uri postUri_ex = listOfReturnedPosts.ElementAt(inkey6 - 1).commentUri;
-                                Console.WriteLine(postUri_ex.ToString());
-                                string threadName_ex = listOfReturnedPosts.ElementAt(inkey6 - 1).threadTitle;
-                                Console.WriteLine(threadName_ex);
-                                string thread_Uri_Stub_ex = listOfReturnedPosts.ElementAt(inkey6 - 1).threadStubUri.ToString();
-                                Console.WriteLine(thread_Uri_Stub_ex);
-                                Console.WriteLine();
-                                int offSet_ex = 0;
-                                Console.WriteLine("Hit any key to continue...");
-                                var inkey7 = Console.ReadKey();
-                                    
-                                while (inkey7.KeyChar.ToString() != "Q")
-                                {
-                                    Console.Clear();
-                                        
-                                    //Grabs the single Post
-                                    tlPostObject postFromUri_ex = getComment(thread_Uri_Stub_ex, (postID_ex + offSet_ex), cachedPostPages, tlPeople).Result;
-                                    
-                                    var personFollowed = from i in tlPeople
-                                                         where (i.tlName == postFromUri_ex.Author)
-                                                         select i;
-                                    
-                                    string followStar = "";
-                                    string postsTotal = "";
-
-                                    if (personFollowed.FirstOrDefault() != null)
-                                    {
-                                        if (personFollowed.FirstOrDefault().followed == true)
-                                        { 
-                                            followStar = "***";
-                                        }
-                                        postsTotal = ", " + personFollowed.FirstOrDefault().tlTotalPosts.ToString() + " posts";
-                                    }
-                                    
-                                    Console.WriteLine("-------------------------------------------------------------------------------");
-                                    Console.WriteLine("Comment #" + postFromUri_ex.commentNumber + " by user " + postFromUri_ex.Author + followStar + postsTotal);
-                                    Console.WriteLine(postFromUri_ex.postContent);
-                                    Console.WriteLine("-------------------------------------------------------------------------------");
+                            switch (inkey3)
+	                        {
+                                case "Q":
+                                    break;
+                                case "A":
+                                    Console.WriteLine("Type the number of the comment you want to see in context.");
                                     Console.WriteLine();
-                                    Console.WriteLine("Press > and < to navigate posts. Q to quit.");
+                                    int inkey6 = Convert.ToInt32(Console.ReadLine().ToUpper());
+                                    Console.WriteLine();
 
-                                    inkey7 = Console.ReadKey();
-                                    if (inkey7.KeyChar.ToString() == "<")
+                                    int threadID_ex = listOfReturnedPosts.ElementAt(inkey6 - 1).uniqueThreadId;
+                                    Console.WriteLine(threadID_ex.ToString());
+                                    int postID_ex = listOfReturnedPosts.ElementAt(inkey6 - 1).commentNumber;
+                                    Console.WriteLine(postID_ex.ToString());
+                                    Uri postUri_ex = listOfReturnedPosts.ElementAt(inkey6 - 1).commentUri;
+                                    Console.WriteLine(postUri_ex.ToString());
+                                    string threadName_ex = listOfReturnedPosts.ElementAt(inkey6 - 1).threadTitle;
+                                    Console.WriteLine(threadName_ex);
+                                    string thread_Uri_Stub_ex = listOfReturnedPosts.ElementAt(inkey6 - 1).threadStubUri.ToString();
+                                    Console.WriteLine(thread_Uri_Stub_ex);
+                                    Console.WriteLine();
+                                    int offSet_ex = 0;
+                                    Console.WriteLine("Hit any key to continue...");
+                                    var inkey7 = Console.ReadKey();
+                                    
+                                    while (inkey7.KeyChar.ToString() != "Q")
                                     {
-                                        offSet_ex--;
+                                        Console.Clear();
+                                        
+                                        //Grabs the single Post
+                                        tlPostObject postFromUri_ex = getComment(thread_Uri_Stub_ex, (postID_ex + offSet_ex), cachedPostPages, tlPeople).Result;
+                                    
+                                        var personFollowed = from i in tlPeople
+                                                             where (i.tlName == postFromUri_ex.Author)
+                                                             select i;
+                                    
+                                        string followStar = "";
+                                        string postsTotal = "";
+
+                                        if (personFollowed.FirstOrDefault() != null)
+                                        {
+                                            if (personFollowed.FirstOrDefault().followed == true)
+                                            { 
+                                                followStar = "***";
+                                            }
+                                            postsTotal = ", " + personFollowed.FirstOrDefault().tlTotalPosts.ToString() + " posts";
+                                        }
+                                    
+                                        Console.WriteLine("-------------------------------------------------------------------------------");
+                                        Console.WriteLine("Comment #" + postFromUri_ex.commentNumber + " by user " + postFromUri_ex.Author + followStar + " " + postsTotal + " on " + postFromUri_ex.postDateTime);
+                                        Console.WriteLine(postFromUri_ex.postContent);
+                                        Console.WriteLine("-------------------------------------------------------------------------------");
+                                        Console.WriteLine();
+                                        Console.WriteLine("Press > and < to navigate posts. Q to quit.");
+
+                                        inkey7 = Console.ReadKey();
+                                        if (inkey7.KeyChar.ToString() == "<")
+                                        {
+                                            offSet_ex--;
+                                        }
+                                        else if (inkey7.KeyChar.ToString() == ">")
+                                        {
+                                            offSet_ex++;
+                                        }
                                     }
-                                    else if (inkey7.KeyChar.ToString() == ">")
-                                    {
-                                        offSet_ex++;
-                                    }
-                                }
-                                break;
-                            default:
-                                break;
-	                    }
+                                    break;
+                                default:
+                                    break;
+                            }
+                        }
+                        else
+                        {
+                            Console.WriteLine("That person doesn't have a TL forum profile!");
+                        }
                         break;
                     case "H":
                         foreach (tlCachedPostPage p in cachedPostPages)
@@ -244,6 +252,60 @@ namespace ConsoleApplication1
                             Console.WriteLine();
                         }
                         Console.WriteLine("Found " + cachedPostPages.Count() + "cached thread pages total.");
+                        break;
+                    case "I":
+                        int updatedPlayerCounter = 0;
+                        foreach (personObject followedPlayer in followedTLPeople)
+                        {
+                            if (followedPlayer.tlName == null)
+                            {
+                                extractPersonDetail(followedPlayer, tlPeople).Wait();
+                            }
+
+                            if (followedPlayer.tlName != null)
+                            {
+                                Console.WriteLine("Updating " + followedPlayer.tlName + "...");
+                                HttpClient groupclient = new HttpClient();
+                                List<tlPostObject> listOfEveryonesPosts = grabUsersTlPosts(followedPlayer, groupclient, cachedPostPages, 2, tlPeople).Result;
+                                updatedPlayerCounter++;
+                            }
+                        }
+                        Console.WriteLine();
+                        Console.WriteLine("Successfully updated " + updatedPlayerCounter + " people's posts out of " + followedTLPeople.Count().ToString() + " followed people total.");
+                        Console.WriteLine();
+                        Console.WriteLine("Press any key to view posts sorted by date/time");
+                        Console.ReadKey();
+                        List<tlPostObject> followedPosts = new List<tlPostObject>();
+                        foreach (personObject h in followedTLPeople)
+                        {
+                            if ((h.tlPostList != null) && (h.tlPostList.Count() != 0))
+                            { 
+                                foreach (tlPostObject g in h.tlPostList)
+                                {
+                                    followedPosts.Add(g);
+                                }
+                            }
+                        }
+                        var orderedPosts = from f in followedPosts
+                                           orderby f.postDateTime
+                                           select f;
+
+                        foreach (tlPostObject e in orderedPosts)
+                        { 
+                        //string postsTotal2 = "";
+                        //string postsTotal2 = ", " + e.Author.ToString() + " posts";
+                                    
+                        Console.WriteLine("-------------------------------------------------------------------------------");
+                        Console.WriteLine("Comment #" + e.commentNumber + " by user " + e.Author + " on " + e.postDateTime);
+                        Console.WriteLine();
+                        Console.WriteLine(e.postContent);
+                        Console.WriteLine("-------------------------------------------------------------------------------");
+                        Console.WriteLine();
+                        }
+
+                        Console.WriteLine("Any key to quit.");
+                        Console.ReadKey();
+                        
                         break;
                     case "Q":
                         quitThisGame = 1;
@@ -627,7 +689,7 @@ namespace ConsoleApplication1
             
             //This LINQ statement grabs ALL thread pages that have the same thread base Uri 
             var CachedPagesThisThread = (from u in cachedPostPages
-                                         where u.cachedPageUniqueThreadID == UniqueThreadID
+                                         where (u != null) && (u.cachedPageUniqueThreadID == UniqueThreadID)
                                          select u);
 
             //Items.Where( i => i.TestList.All(li => li.State == 2))
@@ -692,7 +754,7 @@ namespace ConsoleApplication1
         private static async Task<tlPostObject> grabPostAndCachePage(tlCachedPostPage cachedPage, HttpClient client, Uri postLink, int postNumber, List<personObject> tlPeople, List<tlCachedPostPage> cachedPostPages)
         {
             tlPostObject returnPost = new tlPostObject();
-            
+
             string threadPage = await HTMLUtilities.getHTMLStringFromUriAsync(client, postLink);
             string returnString = null;
 
@@ -821,12 +883,40 @@ namespace ConsoleApplication1
                     }
                 }
 
+                //Scrape the date/time [TO DO]
+                DateTime postDateTime = DateTime.MinValue;
+                string[] months = {"January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"};
+                int latestMonthIndex = -1;
+                string latestMonth = null;
+                foreach (string testmonth in months)
+                {
+                    int indexOfMonth = postTotalBlock.LastIndexOf(testmonth);
+                    if (indexOfMonth > latestMonthIndex)
+                    {
+                        latestMonthIndex = indexOfMonth;
+                        latestMonth = testmonth;
+                    }
+                }
+
+                if ((latestMonthIndex != -1) && (latestMonth != null))
+                {
+                    int endDateIndex = postTotalBlock.IndexOf(". Posts");
+                    if ((endDateIndex != -1) && (endDateIndex > latestMonthIndex))
+                    {
+                        int dateTimeLength = endDateIndex - latestMonthIndex;
+                        string postDateTimeString = postTotalBlock.Substring(latestMonthIndex, dateTimeLength);
+                        postDateTime = Convert.ToDateTime(postDateTimeString);
+                    }
+                    else
+                    {
+                        postDateTime = DateTime.MinValue;
+                    }
+                }
+
                 //Scrape the comment text
                 string commentTags = HTMLUtilities.StringFromTag(commentBlock, "<td class='forumPost'", "</td></tr></table>"); //Same potential problem as above
                 string commentHTML = HTMLUtilities.InnerText(commentTags, 0, commentTags.Length);
                 
-                //Scrape the date/time [TO DO]
-
                 //Impement updating the postObjects. Pseudocode:
                 //
                 //              if cachedPage.postList contains the post
@@ -873,6 +963,7 @@ namespace ConsoleApplication1
                     tempPostObject.uniqueThreadId = thread_id;
                     tempPostObject.threadStubUri = new Uri(ThreadStubStringFromThreadPageUri(new Uri(postLinkString)));
                     tempPostObject.Author = authorName;
+                    tempPostObject.postDateTime = postDateTime;
                 
                     if (singlePostNumber == postNumber)
                     {
@@ -1792,7 +1883,7 @@ namespace ConsoleApplication1
                                 Uri commentUri,
                                 int commentNumber,
                                 string postHTMLContent,
-                                //DateTime postDateTime
+                                DateTime postDateTime,
                                 //CachePageObject (will be shared with all other postObjects on the same page)
                                 string Author
                                 )
@@ -1849,12 +1940,12 @@ namespace ConsoleApplication1
                 set { postContentValue = value; }
             }
 
-            //private DateTime postDateTimeValue;
-            //public DateTime postDateTime
-            //{
-            //    get { return postDateTimeValue; }
-            //    set { postDateTimeValue = value; }
-            //}
+            private DateTime postDateTimeValue;
+            public DateTime postDateTime
+            {
+                get { return postDateTimeValue; }
+                set { postDateTimeValue = value; }
+            }
 
             private string postAuthorValue;
             public string Author

@@ -17,7 +17,7 @@ namespace HTMLUtils
         {
             using (client)
             {
-                var tlProfile_response = await client.GetAsync(tlProfileUri);
+                var tlProfile_response = client.GetAsync(tlProfileUri).Result;
 
                 if (tlProfile_response.IsSuccessStatusCode)
                 {
