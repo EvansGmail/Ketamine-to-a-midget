@@ -279,11 +279,13 @@ namespace ConsoleApplication1
                         foreach (personObject h in followedTLPeople)
                         {
                             if ((h.tlPostList != null) && (h.tlPostList.Count() != 0))
-                            { 
-                                foreach (tlPostObject g in h.tlPostList)
-                                {
-                                    followedPosts.Add(g);
-                                }
+                            {
+                                followedPosts.AddRange(h.tlPostList);
+
+                                //foreach (tlPostObject g in h.tlPostList)
+                                //{
+                                //    followedPosts.Add(g);
+                                //}
                             }
                         }
                         var orderedPosts = from f in followedPosts
