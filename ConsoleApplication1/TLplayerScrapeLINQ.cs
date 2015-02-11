@@ -92,7 +92,7 @@ namespace ConsoleApplication1
 	                        }
                         break;
                     case "B":
-                        Console.WriteLine("Type the Liquipedia Name of the person to follow:");
+                        Console.WriteLine("Type the Name of the person to follow:");
                         Console.WriteLine();
                         string personToFollow = Console.ReadLine().ToUpper();
                         followAndSerialize(personToFollow, tlPeople, followedTLPeople, fileName).Wait();
@@ -140,7 +140,7 @@ namespace ConsoleApplication1
                         if (personForPosts.tlName != null)
                         { 
                             HttpClient client2 = new HttpClient();
-                            List<tlPostObject> listOfReturnedPosts = grabUsersTlPosts(personForPosts, client2, cachedPostPages, 4, tlPeople, fileName).Result;
+                            List<tlPostObject> listOfReturnedPosts = grabUsersTlPosts(personForPosts, client2, cachedPostPages, 8, tlPeople, fileName).Result;
                             
                             int countPosts = 1;
 
@@ -239,7 +239,7 @@ namespace ConsoleApplication1
                         foreach (tlCachedPostPage p in cachedPostPages)
                         {
                             Console.WriteLine(p.cachedPageRemoteUri);
-                            Console.WriteLine("Page " + p.pageNumber.ToString() + ", " + p.posts.Count().ToString() + " comments found.");
+                                Console.WriteLine("Page " + p.pageNumber.ToString() + ", " + p.posts.Count().ToString() + " comments found.");
                             
                             if (p.needsRefresh)
                             {
@@ -251,7 +251,7 @@ namespace ConsoleApplication1
                             }
                             Console.WriteLine();
                         }
-                        Console.WriteLine("Found " + cachedPostPages.Count() + "cached thread pages total.");
+                        Console.WriteLine("Found " + cachedPostPages.Count() + " cached thread pages total.");
                         break;
                     case "I":
                         int updatedPlayerCounter = 0;
@@ -348,7 +348,7 @@ namespace ConsoleApplication1
                           select u);
             if (person.FirstOrDefault() == null)
             {
-                Console.WriteLine("Person not found in Liquipedia. Checking for TL.net forum profile...");
+                Console.WriteLine("Person not found in Liquipedia. Checking for a saved TL.net forum profile...");
                 var person2 = (from v in tlPeople
                                where v.tlName != null && 
                                v.tlName.ToUpper() == personString.ToUpper()
@@ -394,9 +394,23 @@ namespace ConsoleApplication1
 
         private static string getTextBetween(string profileString, string openTag, string closeTag)
         {
-            string tlNameTag = HTMLUtilities.StringFromTag(profileString, openTag, closeTag);
-            string tlScrapedName = tlNameTag.Substring(openTag.Length, tlNameTag.Length - openTag.Length - closeTag.Length);
-            return tlScrapedName;
+            if ((profileString != null) && (profileString.Length > 2))
+            { 
+                string tlNameTag = HTMLUtilities.StringFromTag(profileString, openTag, closeTag);
+                if (tlNameTag != null)
+                {
+                    string tlScrapedName = tlNameTag.Substring(openTag.Length, tlNameTag.Length - openTag.Length - closeTag.Length);
+                    return tlScrapedName;
+                }
+                else
+                {
+                    return null;
+                }
+            }
+            else
+            {
+                return null;
+            }
         }
 
         static async Task<personObject> extractPersonDetail(string personForDetailView, List<personObject> tlPeople)
@@ -489,13 +503,21 @@ namespace ConsoleApplication1
             if (tlPostsResultPage.IndexOf("You are performing searches too quickly") != -1)
             {
                 Console.WriteLine("You searched too fast. Slow down!");
+                System.Threading.Thread.Sleep(5000);
+                HttpClient waitClient = new HttpClient();
+                tlPostsResultPage = await HTMLUtilities.getHTMLStringFromUriAsync(waitClient, postsPage);
+                if (tlPostsResultPage.IndexOf("You are performing searches too quickly") != -1)
+                {
+                    Console.WriteLine("You are STILL performing searches too quickly!!! Aborting.");
+                    Console.ReadKey();
+                }
             }
+
             string postsBlock = HTMLUtilities.StringFromTag(tlPostsResultPage, "<tr><td class='srch_res1'>", "</td></tr></TABLE>");
             int readPosition = 0;
             int threadCount = 0;
             int postCount = 0;
             string srch_res_toggle = "1";
-            person.tlPostList = new List<tlPostObject>();
 
             List<Task<tlPostObject>> grabbedPostList = new List<Task<tlPostObject>>();
 
@@ -572,13 +594,9 @@ namespace ConsoleApplication1
                 Task<tlPostObject> firstProcessedPost = await Task.WhenAny(grabbedPostList);
                 grabbedPostList.Remove(firstProcessedPost);
                 tlPostObject thisProcessedPost = await firstProcessedPost;
-                Console.WriteLine("Adding post #" + thisProcessedPost.commentNumber + " to the list of posts to return");
                 returnedPosts.Add(thisProcessedPost);
             }
 
-            //List<tlPostObject> listReturning = await Task.Run(() => returnedPosts);
-            //return await Task.Run(() => returnedPosts);
-            Console.WriteLine("Returning posts...");
             return await Task.Run(() => returnedPosts);
         }
 
@@ -637,17 +655,11 @@ namespace ConsoleApplication1
                                            select o).FirstOrDefault();
                     if (cachedPostMatch == null)
                     {
-                        tlCachedPostPage cachedPrevPage = new tlCachedPostPage();
                         int prevPostNumber = (20 * (cachedPage.pageNumber - 1));
                         Uri postLinkUri = new Uri(cachedPage.prevThreadPage.ToString());
-                        tlCachedPostPage cachedNextPage = getCachedPage(cachedPostPages, postLinkUri.ToString(), prevPostNumber);
-                        Console.WriteLine("     Reading previous page from the web...");
-                        //cachedPrevPage.pageNumber = cachedPage.pageNumber - 1;
-                        //cachedPrevPage.cachedPageUniqueThreadID = cachedPage.cachedPageUniqueThreadID;
-
-                        HttpClient prevCommentClient = new HttpClient();
-                        await grabPostAndCachePage(cachedPrevPage, prevCommentClient, postLinkUri, prevPostNumber, tlPeople, cachedPostPages, fileName);
-                        cachedPrevPage.needsRefresh = false;
+                        Console.WriteLine("     Retrieving the next page...");
+                        Console.Write("     ");
+                        await getComment(thread_Uri_stub, prevPostNumber, cachedPostPages, tlPeople, fileName);
                     }
 
                 }
@@ -662,14 +674,9 @@ namespace ConsoleApplication1
                     {
                         int nextPostNumber = (20 * (cachedPage.pageNumber) + 1);
                         Uri postLinkUri = new Uri(cachedPage.nextThreadPage.ToString());
-                        tlCachedPostPage cachedNextPage = getCachedPage(cachedPostPages, postLinkUri.ToString(), nextPostNumber);
-                        Console.WriteLine("     Reading next page from the web...");
-                        //cachedNextPage.pageNumber = cachedPage.pageNumber + 1;
-                        //cachedNextPage.cachedPageUniqueThreadID = cachedPage.cachedPageUniqueThreadID;
-
-                        HttpClient nextCommentClient = new HttpClient();
-                        await grabPostAndCachePage(cachedNextPage, nextCommentClient, postLinkUri, nextPostNumber, tlPeople, cachedPostPages, fileName);
-                        cachedNextPage.needsRefresh = false;
+                        Console.WriteLine("     Retrieving the next page from the web...");
+                        Console.Write("     ");
+                        await getComment(thread_Uri_stub, nextPostNumber, cachedPostPages, tlPeople, fileName);
                     }
                 }
 
@@ -679,7 +686,6 @@ namespace ConsoleApplication1
                 Console.WriteLine("Reading page from the cache...");
 
                 //If it doesn't need a refresh... grab the existing post object
-                //commentText = cachedPage.posts.Where(s => s.commentNumber == postNumber).FirstOrDefault().postContent;
                 requestedPost = cachedPage.posts.Where(s => s.commentNumber == postNumber).FirstOrDefault();
             }
             return requestedPost;
@@ -696,12 +702,11 @@ namespace ConsoleApplication1
         {
             int UniqueThreadID = threadIdFromThreadUriString(thread_Uri_stub);
             
-            //This LINQ statement grabs ALL thread pages that have the same thread base Uri 
+            //This LINQ statement grabs ALL thread pages that have the same Unique Thread ID 
             var CachedPagesThisThread = (from u in cachedPostPages
                                          where (u != null) && (u.cachedPageUniqueThreadID == UniqueThreadID)
                                          select u);
 
-            //Items.Where( i => i.TestList.All(li => li.State == 2))
             tlCachedPostPage match = new tlCachedPostPage();
 
             if (CachedPagesThisThread.FirstOrDefault() != null)
@@ -869,18 +874,28 @@ namespace ConsoleApplication1
 
                 //Scrape the total posts for the author, and, if the author is followed, and the number is higher than the recorded number, grab any new posts
                 //<span class='forummsginfo'>&nbsp;<div class='usericon T10'></div>&nbsp;Pokebunny &nbsp; United States. December 16 2014 14:46. Posts 10276</span>
-                string postTotalBlock = HTMLUtilities.StringFromTag(commentBlock, "span class='forummsginfo'", "</span></td>");
-                string postTotalString;
+                string postTotalBlock = HTMLUtilities.StringFromTag(commentBlock, " ", "</span></td>");
+                string postTotalString = null;
                 int postsTotal = 0;
                 if (postTotalBlock != null)
-                { 
+                {
                     postTotalString = getTextBetween(postTotalBlock, "Posts ", "</span>");
-                    postsTotal = Convert.ToInt32(postTotalString);
+                    if (postTotalString != null)
+                    {
+                        postsTotal = Convert.ToInt32(postTotalString);
+                    }
+                    else
+                    {
+                        //So far, this only occurs for the TL E-Sports self-posts. They just break everything.
+                        postsTotal = 0;
+                    }
                 }
                 else
                 {
                     Console.WriteLine("This post doesn't have a post total block!");
                 }
+
+                DateTime postDateTime = DateTime.MinValue;
 
                 if (authorName != null)
                 {
@@ -898,44 +913,48 @@ namespace ConsoleApplication1
                             //Also, cap this at something for now
                             StopSerializing(fileName, foundAuthor);
                             StartSerializing(fileName, foundAuthor); //The single dumbest two lines of code I may ever write.
-                            if (postDifference > 4)
+                            if (postDifference > 8)
                             {
-                                postDifference = 4;
+                                postDifference = 8;
                             }
                             HttpClient updatePostsClient = new HttpClient();
                             await grabUsersTlPosts(foundAuthor, updatePostsClient, cachedPostPages, postDifference, tlPeople, fileName);
                         }
                     }
-                }
-
-                //Scrape the date/time [TO DO]
-                DateTime postDateTime = DateTime.MinValue;
-                string[] months = {"January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"};
-                int latestMonthIndex = -1;
-                string latestMonth = null;
-                foreach (string testmonth in months)
-                {
-                    int indexOfMonth = postTotalBlock.LastIndexOf(testmonth);
-                    if (indexOfMonth > latestMonthIndex)
+                    
+                    string[] months = { "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December" };
+                    int latestMonthIndex = -1;
+                    string latestMonth = null;
+                    foreach (string testmonth in months)
                     {
-                        latestMonthIndex = indexOfMonth;
-                        latestMonth = testmonth;
+                        int indexOfMonth = postTotalBlock.LastIndexOf(testmonth);
+                        if (indexOfMonth > latestMonthIndex)
+                        {
+                            latestMonthIndex = indexOfMonth;
+                            latestMonth = testmonth;
+                        }
+                    }
+                    
+                    if ((latestMonthIndex != -1) && (latestMonth != null))
+                    {
+                        int endDateIndex = postTotalBlock.IndexOf(". Posts");
+                        if ((endDateIndex != -1) && (endDateIndex > latestMonthIndex))
+                        {
+                            int dateTimeLength = endDateIndex - latestMonthIndex;
+                            string postDateTimeString = postTotalBlock.Substring(latestMonthIndex, dateTimeLength);
+                            postDateTime = Convert.ToDateTime(postDateTimeString);
+                        }
+                        else
+                        {
+                            postDateTime = DateTime.MinValue;
+                        }
                     }
                 }
-
-                if ((latestMonthIndex != -1) && (latestMonth != null))
+                else
                 {
-                    int endDateIndex = postTotalBlock.IndexOf(". Posts");
-                    if ((endDateIndex != -1) && (endDateIndex > latestMonthIndex))
-                    {
-                        int dateTimeLength = endDateIndex - latestMonthIndex;
-                        string postDateTimeString = postTotalBlock.Substring(latestMonthIndex, dateTimeLength);
-                        postDateTime = Convert.ToDateTime(postDateTimeString);
-                    }
-                    else
-                    {
-                        postDateTime = DateTime.MinValue;
-                    }
+                    authorName = "TeamLiquid ESPORTS";
+                    //<span style='margin-left: 3px; font-weight: normal; font-size: 12px'>September 17th, 2013 19:51 | StarCraft 2</span>
+                    //To do: Scrape the post Date/Time for TL Esports posts
                 }
 
                 //Scrape the comment text
@@ -1002,12 +1021,13 @@ namespace ConsoleApplication1
                                            where x.tlName == authorName
                                            select x);
                         personObject tempPerson = personMatch.FirstOrDefault();
-                    
+
                         if (tempPerson != null && tempPerson.tlPostList != null)
                         {
                             tempPerson.tlPostList.Add(tempPostObject);
                         } else if (tempPerson != null && tempPerson.tlPostList == null)
                         {
+                            //This now actually runs!
                             tempPerson.tlPostList = new List<tlPostObject>();
                             tempPerson.tlPostList.Add(tempPostObject);
                         }
@@ -1068,7 +1088,7 @@ namespace ConsoleApplication1
                 if (currentPageNumber == 2)
                 {
                     //Just the stub. Just to see how it feels.
-                    cachedPage.prevThreadPage = new Uri(postLinkString);
+                    cachedPage.prevThreadPage = new Uri(postLinkStringStub);
                     if (postNumber < 23)
                     {
                         //Check to see if post 20 is cached
@@ -1214,8 +1234,18 @@ namespace ConsoleApplication1
                                      select u);
             if (personToFollowObj.Count() != 1)
             {
-                Console.WriteLine("Person not found!");
-                return;
+                Console.WriteLine("Person not found in Liquipedia!");
+                personObject tlUserPerson = await extractPersonDetail(personToFollow, tlPeople);
+                if (tlUserPerson != null)
+                {
+                    Console.WriteLine("It's okay, found them in the TeamLiquid.net forums!");
+                    await followAndSerialize(personToFollow, tlPeople, followedTLPeople, fileName);
+                }
+                else
+                {
+                    Console.WriteLine("Nobody by that name found in the TeamLiquid.net forums, either.");
+                    return;
+                }
             }
             else
             {
@@ -1272,7 +1302,6 @@ namespace ConsoleApplication1
                     {
                         personObject t = (personObject)formatter.Deserialize(d);
 
-                        Console.WriteLine("Deserializing " + t.liquipediaName + ", a/k/a " + t.tlName);
                         //When you deserialize, you don't literally pull the object back; otherwise there would be two of each followed player.
                         //Instead, take the saved information from the serialized object and put it into the player in tlPeople.
                         //This is not true for TL forum-only people, as they aren't in tlPeople by default.
@@ -1500,9 +1529,6 @@ namespace ConsoleApplication1
                                                         }
                                                         break;
                                                     default:
-                                                        //Console.WriteLine("Oh Gawd. Something has gone horribly wrong. i = " + i.ToString());
-                                                        // (It really has, code execution should never reach this)
-                                                        //Console.ReadKey();
                                                         break;
                                                 }
                                             }
