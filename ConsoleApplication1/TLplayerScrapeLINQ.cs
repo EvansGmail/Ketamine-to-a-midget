@@ -140,7 +140,7 @@ namespace ConsoleApplication1
                         if (personForPosts.tlName != null)
                         { 
                             HttpClient client2 = new HttpClient();
-                            List<tlPostObject> listOfReturnedPosts = grabUsersTlPosts(personForPosts, client2, cachedPostPages, 4, tlPeople).Result;
+                            List<tlPostObject> listOfReturnedPosts = grabUsersTlPosts(personForPosts, client2, cachedPostPages, 4, tlPeople, fileName).Result;
                             
                             int countPosts = 1;
 
@@ -190,7 +190,7 @@ namespace ConsoleApplication1
                                         Console.Clear();
                                         
                                         //Grabs the single Post
-                                        tlPostObject postFromUri_ex = getComment(thread_Uri_Stub_ex, (postID_ex + offSet_ex), cachedPostPages, tlPeople).Result;
+                                        tlPostObject postFromUri_ex = getComment(thread_Uri_Stub_ex, (postID_ex + offSet_ex), cachedPostPages, tlPeople, fileName).Result;
                                     
                                         var personFollowed = from i in tlPeople
                                                              where (i.tlName == postFromUri_ex.Author)
@@ -264,9 +264,9 @@ namespace ConsoleApplication1
 
                             if (followedPlayer.tlName != null)
                             {
-                                Console.WriteLine("Updating " + followedPlayer.tlName + "...");
                                 HttpClient groupclient = new HttpClient();
-                                List<tlPostObject> listOfEveryonesPosts = grabUsersTlPosts(followedPlayer, groupclient, cachedPostPages, 2, tlPeople).Result;
+                                Console.WriteLine("Grabbing " + followedPlayer.tlName + "'s posts.");
+                                List<tlPostObject> listOfEveryonesPosts = grabUsersTlPosts(followedPlayer, groupclient, cachedPostPages, 3, tlPeople, fileName).Result;
                                 updatedPlayerCounter++;
                             }
                         }
@@ -480,11 +480,16 @@ namespace ConsoleApplication1
             return await Task.Run(() => person);
         }
 
-        private static async Task<List<tlPostObject>> grabUsersTlPosts(personObject person, HttpClient client, List<tlCachedPostPage> cachedPostPages, int postsToGrab, List<personObject> tlPeople)
+        private static async Task<List<tlPostObject>> grabUsersTlPosts(personObject person, HttpClient client, List<tlCachedPostPage> cachedPostPages, int postsToGrab, List<personObject> tlPeople, string fileName)
         {
+            //It's actually better to grab 4+ of these posts... otherwise the searches for individual posters happen too fast and TL rate limits you.
             List<tlPostObject> returnedPosts = new List<tlPostObject> { };
             Uri postsPage = tlPostUriFromTlUsername(person.tlName);
             string tlPostsResultPage = await HTMLUtilities.getHTMLStringFromUriAsync(client, postsPage);
+            if (tlPostsResultPage.IndexOf("You are performing searches too quickly") != -1)
+            {
+                Console.WriteLine("You searched too fast. Slow down!");
+            }
             string postsBlock = HTMLUtilities.StringFromTag(tlPostsResultPage, "<tr><td class='srch_res1'>", "</td></tr></TABLE>");
             int readPosition = 0;
             int threadCount = 0;
@@ -538,11 +543,11 @@ namespace ConsoleApplication1
                         postNumber = 1; //Probably the first post of a thread, by the TL staff.
                     }
                     subThread_position = post_list_block.IndexOf("<a class='sls' name='srl' href='viewpost.php?post_id=", postLink_end);
-                    
-                    //tlPostObject requestedPost = getComment(thread_Uri_stub, postNumber, cachedPostPages, tlPeople).Result;
-                    Task<tlPostObject> getRequestedPost = getComment(thread_Uri_stub, postNumber, cachedPostPages, tlPeople);
+
+                    //tlPostObject requestedPost = await getComment(thread_Uri_stub, postNumber, cachedPostPages, tlPeople, fileName);
+                    Task<tlPostObject> getRequestedPost = getComment(thread_Uri_stub, postNumber, cachedPostPages, tlPeople, fileName);
                     grabbedPostList.Add(getRequestedPost);
-    
+
                     postCount++;
                     //returnedPosts.Add(requestedPost);
                     //returnedPosts.Add(getRequestedPost.Result);
@@ -567,11 +572,13 @@ namespace ConsoleApplication1
                 Task<tlPostObject> firstProcessedPost = await Task.WhenAny(grabbedPostList);
                 grabbedPostList.Remove(firstProcessedPost);
                 tlPostObject thisProcessedPost = await firstProcessedPost;
+                Console.WriteLine("Adding post #" + thisProcessedPost.commentNumber + " to the list of posts to return");
                 returnedPosts.Add(thisProcessedPost);
             }
 
             //List<tlPostObject> listReturning = await Task.Run(() => returnedPosts);
             //return await Task.Run(() => returnedPosts);
+            Console.WriteLine("Returning posts...");
             return await Task.Run(() => returnedPosts);
         }
 
@@ -583,7 +590,7 @@ namespace ConsoleApplication1
         /// <param name="cachedPostPages">The list of cached pages.</param>
         /// <param name="tlPeople">The list of people.</param>
         /// <returns></returns>
-        private static async Task<tlPostObject> getComment(string thread_Uri_stub, int postNumber, List<tlCachedPostPage> cachedPostPages, List<personObject> tlPeople)
+        private static async Task<tlPostObject> getComment(string thread_Uri_stub, int postNumber, List<tlCachedPostPage> cachedPostPages, List<personObject> tlPeople, string fileName)
         {
             tlPostObject requestedPost = new tlPostObject();
             //I think I should use a separate client for each comment. That way, in the future, I can grab the pages concurrently
@@ -609,7 +616,7 @@ namespace ConsoleApplication1
 
                 Console.WriteLine("Reading page from the web...");
 
-                requestedPost = await grabPostAndCachePage(cachedPage, commentClient, thread_page_Uri, postNumber, tlPeople, cachedPostPages);
+                requestedPost = await grabPostAndCachePage(cachedPage, commentClient, thread_page_Uri, postNumber, tlPeople, cachedPostPages, fileName);
                 requestedPost.threadStubUri = new Uri(thread_Uri_stub);
                 cachedPage.needsRefresh = false;
 
@@ -639,7 +646,7 @@ namespace ConsoleApplication1
                         //cachedPrevPage.cachedPageUniqueThreadID = cachedPage.cachedPageUniqueThreadID;
 
                         HttpClient prevCommentClient = new HttpClient();
-                        await grabPostAndCachePage(cachedPrevPage, prevCommentClient, postLinkUri, prevPostNumber, tlPeople, cachedPostPages);
+                        await grabPostAndCachePage(cachedPrevPage, prevCommentClient, postLinkUri, prevPostNumber, tlPeople, cachedPostPages, fileName);
                         cachedPrevPage.needsRefresh = false;
                     }
 
@@ -661,7 +668,7 @@ namespace ConsoleApplication1
                         //cachedNextPage.cachedPageUniqueThreadID = cachedPage.cachedPageUniqueThreadID;
 
                         HttpClient nextCommentClient = new HttpClient();
-                        await grabPostAndCachePage(cachedNextPage, nextCommentClient, postLinkUri, nextPostNumber, tlPeople, cachedPostPages);
+                        await grabPostAndCachePage(cachedNextPage, nextCommentClient, postLinkUri, nextPostNumber, tlPeople, cachedPostPages, fileName);
                         cachedNextPage.needsRefresh = false;
                     }
                 }
@@ -753,7 +760,7 @@ namespace ConsoleApplication1
             return (1 + (PostNum - 1)/20 - ((PostNum - 1) % 20)/20);
         }
 
-        private static async Task<tlPostObject> grabPostAndCachePage(tlCachedPostPage cachedPage, HttpClient client, Uri postLink, int postNumber, List<personObject> tlPeople, List<tlCachedPostPage> cachedPostPages)
+        private static async Task<tlPostObject> grabPostAndCachePage(tlCachedPostPage cachedPage, HttpClient client, Uri postLink, int postNumber, List<personObject> tlPeople, List<tlCachedPostPage> cachedPostPages, string fileName)
         {
             tlPostObject returnPost = new tlPostObject();
 
@@ -824,6 +831,10 @@ namespace ConsoleApplication1
             while (readPosition != -1)
             {
                 string commentBlock = HTMLUtilities.StringFromTag(threadPage, startBlock, endBlock, readPosition);
+                if (commentBlock == null)
+                {
+                    Console.WriteLine("This page doesn't have any comments!");
+                }
                 //Scrape the post blocks here
                 
                 //Scrape the post link
@@ -866,6 +877,10 @@ namespace ConsoleApplication1
                     postTotalString = getTextBetween(postTotalBlock, "Posts ", "</span>");
                     postsTotal = Convert.ToInt32(postTotalString);
                 }
+                else
+                {
+                    Console.WriteLine("This post doesn't have a post total block!");
+                }
 
                 if (authorName != null)
                 {
@@ -879,8 +894,16 @@ namespace ConsoleApplication1
                         if (postDifference > 0)
                         {
                             foundAuthor.tlTotalPosts = postsTotal;
+                            //Need to re-serialize; not sure if this will totally break (double-follow) or not
+                            //Also, cap this at something for now
+                            StopSerializing(fileName, foundAuthor);
+                            StartSerializing(fileName, foundAuthor); //The single dumbest two lines of code I may ever write.
+                            if (postDifference > 4)
+                            {
+                                postDifference = 4;
+                            }
                             HttpClient updatePostsClient = new HttpClient();
-                            await grabUsersTlPosts(foundAuthor, updatePostsClient, cachedPostPages, postDifference, tlPeople);
+                            await grabUsersTlPosts(foundAuthor, updatePostsClient, cachedPostPages, postDifference, tlPeople, fileName);
                         }
                     }
                 }
@@ -1135,36 +1158,7 @@ namespace ConsoleApplication1
                 {
                     personToUnfollowObj.followed = false;
                     followedTLPeople.Remove(personToUnfollowObj);
-                    FileStream s = new FileStream(fileName, FileMode.Open);
-                    IFormatter formatter = new BinaryFormatter();
-                    while (s.Position != s.Length)
-                    {
-                        long objStartPosition = s.Position;
-                        personObject v = (personObject)formatter.Deserialize(s);
-
-                        if ((v.liquipediaName == personToUnfollowObj.liquipediaName) || (v.tlName == personToUnfollowObj.tlName))
-                        {
-                            long nextObjPosition = s.Position;
-                            //Need to remove data from objStartPosition to (s.Position - 1). So, copy everything from s.Position to the end, and move is to objStartPosition, then truncate
-                            long bytesToGrab = s.Length - s.Position;
-                            int[] bytesLeft = new int[bytesToGrab];
-                            while (s.Position != s.Length)
-                            {
-                                bytesLeft[s.Position - nextObjPosition] = s.ReadByte();
-                            }
-
-                            BinaryWriter bw = new BinaryWriter(s);
-                            bw.Seek((int)objStartPosition, SeekOrigin.Begin);
-                            for (int i = 0; i < bytesToGrab; i++)
-                            {
-                                bw.Write((byte)bytesLeft[i]);
-                            }
-                            s.SetLength(s.Position);
-                            //Set the position equal to the end after you truncate the file; that way this while loop will exit
-                        }
-
-                    }
-                    s.Close();
+                    StopSerializing(fileName, personToUnfollowObj);
                     if (personToUnfollowObj.liquipediaName != null)
                     { 
                         Console.WriteLine("Successfully unfollowed " + personToUnfollowObj.liquipediaName);
@@ -1176,6 +1170,40 @@ namespace ConsoleApplication1
                 }
                 return;
             }
+        }
+
+        private static void StopSerializing(string fileName, personObject personToUnfollowObj)
+        {
+            FileStream s = new FileStream(fileName, FileMode.Open);
+            IFormatter formatter = new BinaryFormatter();
+            while (s.Position != s.Length)
+            {
+                long objStartPosition = s.Position;
+                personObject v = (personObject)formatter.Deserialize(s);
+
+                if ((v.liquipediaName == personToUnfollowObj.liquipediaName) || (v.tlName == personToUnfollowObj.tlName))
+                {
+                    long nextObjPosition = s.Position;
+                    //Need to remove data from objStartPosition to (s.Position - 1). So, copy everything from s.Position to the end, and move is to objStartPosition, then truncate
+                    long bytesToGrab = s.Length - s.Position;
+                    int[] bytesLeft = new int[bytesToGrab];
+                    while (s.Position != s.Length)
+                    {
+                        bytesLeft[s.Position - nextObjPosition] = s.ReadByte();
+                    }
+
+                    BinaryWriter bw = new BinaryWriter(s);
+                    bw.Seek((int)objStartPosition, SeekOrigin.Begin);
+                    for (int i = 0; i < bytesToGrab; i++)
+                    {
+                        bw.Write((byte)bytesLeft[i]);
+                    }
+                    s.SetLength(s.Position);
+                    //Set the position equal to the end after you truncate the file; that way this while loop will exit
+                }
+
+            }
+            s.Close();
         }
 
         private static async Task followAndSerialize(string personToFollow, List<personObject> tlPeople, List<personObject> followedTLPeople, string fileName)
@@ -1218,13 +1246,18 @@ namespace ConsoleApplication1
                         await extractPersonDetail(followPersonObject, tlPeople);
                         Console.WriteLine("Following " + followPersonObject.tlName);
                     }
-                    FileStream s = new FileStream(fileName, FileMode.Append);
-                    IFormatter formatter = new BinaryFormatter();
-                    formatter.Serialize(s, followPersonObject);
-                    s.Close();
+                    StartSerializing(fileName, followPersonObject);
                 }
                 return;
             }
+        }
+
+        private static void StartSerializing(string fileName, personObject followPersonObject)
+        {
+            FileStream s = new FileStream(fileName, FileMode.Append);
+            IFormatter formatter = new BinaryFormatter();
+            formatter.Serialize(s, followPersonObject);
+            s.Close();
         }
 
         private static void DeserializeFollowedPlayers(string fileName, List<personObject> tlPeople, List<personObject> followedTLPeople)
