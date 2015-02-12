@@ -519,7 +519,9 @@ namespace ConsoleApplication1
             int postCount = 0;
             string srch_res_toggle = "1";
 
+            List<Task> taskFactoryTasks = new List<Task>();
             List<Task<tlPostObject>> grabbedPostList = new List<Task<tlPostObject>>();
+            
 
             while (readPosition != -1 && readPosition < postsBlock.Length && postCount < postsToGrab)
             {
@@ -549,6 +551,8 @@ namespace ConsoleApplication1
                 int post_list_block_length = post_list_block_end - post_list_block_start;
                 string post_list_block = threadBlock.Substring(post_list_block_start, post_list_block_length);
                 int subThread_position = 0;
+                int thisPost_pageNum = 0;
+                int lastPost_pageNum = 0;
 
                 while (subThread_position != -1 && postCount < postsToGrab)
                 {
@@ -567,12 +571,26 @@ namespace ConsoleApplication1
                     subThread_position = post_list_block.IndexOf("<a class='sls' name='srl' href='viewpost.php?post_id=", postLink_end);
 
                     //tlPostObject requestedPost = await getComment(thread_Uri_stub, postNumber, cachedPostPages, tlPeople, fileName);
-                    Task<tlPostObject> getRequestedPost = getComment(thread_Uri_stub, postNumber, cachedPostPages, tlPeople, fileName);
-                    grabbedPostList.Add(getRequestedPost);
+                    //Separate instanced where a comment is the first to be scraped on it's page?
+
+                    thisPost_pageNum = pageNumFromPostNum(postNumber);
+
+                    if (thisPost_pageNum != lastPost_pageNum)
+                    {
+                        taskFactoryTasks.Add(Task.Factory.StartNew(() => grabbedPostList.Add(getComment(thread_Uri_stub, postNumber, cachedPostPages, tlPeople, fileName))));
+                    }
+                    else
+                    {
+                        //This delayed task is running up against the one it is supposed to be waiting on...
+                        Task cachedCommentTask = taskFactoryTasks.Last().ContinueWith((antecedent) =>
+                                                    {
+                                                        returnedPosts.Add(getComment(thread_Uri_stub, postNumber, cachedPostPages, tlPeople, fileName).Result);
+                                                    });
+                    }
+
+                    lastPost_pageNum = pageNumFromPostNum(postNumber);
 
                     postCount++;
-                    //returnedPosts.Add(requestedPost);
-                    //returnedPosts.Add(getRequestedPost.Result);
                 }
 
 
@@ -589,14 +607,33 @@ namespace ConsoleApplication1
                 threadCount++;
             }
 
-            while (grabbedPostList.Count() > 0)
+            while ((taskFactoryTasks.Count > 0) || (grabbedPostList.Count() > 0))
             {
+                Task firstFactoryTask = await Task.WhenAny(taskFactoryTasks);
+                taskFactoryTasks.Remove(firstFactoryTask);
+
                 Task<tlPostObject> firstProcessedPost = await Task.WhenAny(grabbedPostList);
                 grabbedPostList.Remove(firstProcessedPost);
                 tlPostObject thisProcessedPost = await firstProcessedPost;
                 returnedPosts.Add(thisProcessedPost);
             }
 
+            //while (taskFactoryTasks.Count > 0)
+            //{
+            //    Task firstFactoryTask = await Task.WhenAny(taskFactoryTasks);
+            //    taskFactoryTasks.Remove(firstFactoryTask);
+            //}
+
+            //while (grabbedPostList.Count() > 0)
+            //{
+            //    Task<tlPostObject> firstProcessedPost = await Task.WhenAny(grabbedPostList);
+            //    grabbedPostList.Remove(firstProcessedPost);
+            //    tlPostObject thisProcessedPost = await firstProcessedPost;
+            //    returnedPosts.Add(thisProcessedPost);
+            //}
+
+            //Need to make sure all threads are done before returning... this is continuing to modify Lists after returning!
+            Task.WaitAll();
             return await Task.Run(() => returnedPosts);
         }
 
@@ -703,15 +740,22 @@ namespace ConsoleApplication1
             int UniqueThreadID = threadIdFromThreadUriString(thread_Uri_stub);
             
             //This LINQ statement grabs ALL thread pages that have the same Unique Thread ID 
-            var CachedPagesThisThread = (from u in cachedPostPages
-                                         where (u != null) && (u.cachedPageUniqueThreadID == UniqueThreadID)
-                                         select u);
+            List<tlCachedPostPage> CachedPagesThisThread = new List<tlCachedPostPage>();
+
+            CachedPagesThisThread = queryCacheSafeFromChanges(CachedPagesThisThread, UniqueThreadID, cachedPostPages);
 
             tlCachedPostPage match = new tlCachedPostPage();
 
             if (CachedPagesThisThread.FirstOrDefault() != null)
             {
-                match = CachedPagesThisThread.Where(q => q.posts.Any(li => li.commentNumber == postNumber)).FirstOrDefault();
+                try { 
+                //I think the bug here is that somehow the earlier Task calls are adding empty cache pages?
+                match = CachedPagesThisThread.Where(q => q.posts != null && q.posts.Any(li => li.commentNumber == postNumber)).FirstOrDefault();
+                }
+                catch
+                {
+                    Console.WriteLine("Bugger bugger bug.");
+                }
             }
             else
             {
@@ -740,6 +784,22 @@ namespace ConsoleApplication1
                 tlCachedPostPage cachedPageObject = (tlCachedPostPage)match;
                 return cachedPageObject;
             }    
+        }
+
+        private static List<tlCachedPostPage> queryCacheSafeFromChanges(List<tlCachedPostPage> CachedPagesThisThread, int UniqueThreadID, List<tlCachedPostPage> cachedPostPages)
+        {
+            try
+            {
+                CachedPagesThisThread = (from u in cachedPostPages
+                                         where (u != null) && (u.cachedPageUniqueThreadID == UniqueThreadID)
+                                         select u).ToList();
+            }
+            catch
+            {
+                Console.WriteLine("Collection was modified; re-starting search query.");
+                return queryCacheSafeFromChanges(CachedPagesThisThread, UniqueThreadID, cachedPostPages);
+            }
+            return CachedPagesThisThread;
         }
 
         private static tlCachedPostPage getCachedPage(List<tlCachedPostPage> cachedPostPages, tlPostObject postObject) //Overload for post object
@@ -783,7 +843,7 @@ namespace ConsoleApplication1
             int thread_id = threadIdFromThreadUriString(postLinkString);
             cachedPage.cachedPageUniqueThreadID = thread_id;
 
-            //Scrape the thread title - this includes the page number, which sucks, but isn't a priority
+            //Scrape the thread title - this includes the page number, which sucks, but removing it isn't a priority
             string thread_title = HTMLUtilities.InnerText(HTMLUtilities.StringFromTag(threadPage, "<title>", "</title>"));
             
             //Scrape the post forum
@@ -832,7 +892,8 @@ namespace ConsoleApplication1
             int readPosition = 0;
             string startBlock = "<tr><td colspan=\"2\"><a name=\"";
             string endBlock = "</table><br></td></tr>";
-            
+            List<Task> grabTlPostListTasks = new List<Task>();
+
             while (readPosition != -1)
             {
                 string commentBlock = HTMLUtilities.StringFromTag(threadPage, startBlock, endBlock, readPosition);
@@ -918,7 +979,10 @@ namespace ConsoleApplication1
                                 postDifference = 8;
                             }
                             HttpClient updatePostsClient = new HttpClient();
-                            await grabUsersTlPosts(foundAuthor, updatePostsClient, cachedPostPages, postDifference, tlPeople, fileName);
+                            //Could hypothetically run more than once because of the while block, so I will add to a List and await them at the end
+                            //This way execution doesn't halt here; and grabPostAndCachePage runs asynchronously, so it won't hold up other grabs either
+                            //Not sure how to test this since it's such a rare case... hopefully TheDwf posts sometime while I'm running it!
+                            grabTlPostListTasks.Add(grabUsersTlPosts(foundAuthor, updatePostsClient, cachedPostPages, postDifference, tlPeople, fileName));
                         }
                     }
                     
@@ -1027,7 +1091,7 @@ namespace ConsoleApplication1
                             tempPerson.tlPostList.Add(tempPostObject);
                         } else if (tempPerson != null && tempPerson.tlPostList == null)
                         {
-                            //This now actually runs!
+                            //This now actually runs the first time a person's post gets added to their personObject.tlPostList
                             tempPerson.tlPostList = new List<tlPostObject>();
                             tempPerson.tlPostList.Add(tempPostObject);
                         }
@@ -1109,6 +1173,14 @@ namespace ConsoleApplication1
             }
 
             cachedPage.pageNumber = currentPageNumber;
+
+            while (grabTlPostListTasks.Count() > 0)
+            {
+                Task firstProcessedList = await Task.WhenAny(grabTlPostListTasks);
+                grabTlPostListTasks.Remove(firstProcessedList);
+                //tlPostObject thisProcessedList = await firstProcessedList;
+                //returnedPosts.Add(thisProcessedPost); //Not returning these at this point, because grabUsersTlPosts already processes them
+            }
 
             if (returnPost.commentNumber == 0)
             {
@@ -1936,6 +2008,7 @@ namespace ConsoleApplication1
             /// <param name="commentUri">The Uri address object linking directly to this Post or Comment</param>
             /// <param name="commentNumber">The <![CDATA[ <a name=#> ]]> comment number of this Post or Comment in its parent thread</param>
             /// <param name="postHTMLContent">A string containing the HTML markup content of the Post or Comment</param>
+            /// <param name="postDateTime">The Date and Time the post was made.</param>
             /// <param name="Author">The author of the post, if any</param>
             public tlPostObject(int uniqueThreadId,
                                 Uri threadStubUri,
