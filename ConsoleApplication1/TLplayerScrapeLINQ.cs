@@ -144,16 +144,7 @@ namespace ConsoleApplication1
                             
                             int countPosts = 1;
 
-                            foreach (tlPostObject n in listOfReturnedPosts)
-                            {
-                                Console.WriteLine("[" + n.Author + "'s Comment Number " + countPosts + "]");
-                                Console.WriteLine(n.threadTitle);
-                                Console.WriteLine("Comment by " + n.Author);
-                                Console.WriteLine("Comment #" + n.commentNumber + ":");
-                                //Console.WriteLine(n.postContent);
-                                countPosts++;
-                                Console.WriteLine();
-                            }
+                            countPosts = displayPostList(listOfReturnedPosts, countPosts);
 
                             Console.WriteLine("Do you want to: \n" +
                                                 "     A. View a post in situ on a thread page? \n" +
@@ -319,6 +310,30 @@ namespace ConsoleApplication1
             }
 
 
+        }
+
+        private static int displayPostList(List<tlPostObject> listOfReturnedPosts, int countPosts)
+        {
+            try
+            {
+                foreach (tlPostObject n in listOfReturnedPosts)
+                {
+                    Console.WriteLine("[" + n.Author + "'s Comment Number " + countPosts + "]");
+                    Console.WriteLine(n.threadTitle);
+                    Console.WriteLine("Comment by " + n.Author);
+                    Console.WriteLine("Comment #" + n.commentNumber + ":");
+                    //Console.WriteLine(n.postContent);
+                    countPosts++;
+                    Console.WriteLine();
+                }
+            }
+            catch
+            {
+                Console.WriteLine("Collection changed. Starting over.");
+                countPosts = 1;
+                countPosts = displayPostList(listOfReturnedPosts, countPosts);
+            }
+            return countPosts;
         }
 
         /// <summary>
@@ -845,6 +860,11 @@ namespace ConsoleApplication1
 
             //Scrape the thread title - this includes the page number, which sucks, but removing it isn't a priority
             string thread_title = HTMLUtilities.InnerText(HTMLUtilities.StringFromTag(threadPage, "<title>", "</title>"));
+            int threadTitlePageNumIndex = thread_title.IndexOf(" - Page");
+            if (threadTitlePageNumIndex != -1)
+            {
+                thread_title = thread_title.Substring(0, threadTitlePageNumIndex);
+            }
             
             //Scrape the post forum
             int subforumStart = threadPage.LastIndexOf("<span itemprop=\"title\">") + "<span itemprop=\"title\">".Length;
@@ -1017,8 +1037,10 @@ namespace ConsoleApplication1
                 else
                 {
                     authorName = "TeamLiquid ESPORTS";
-                    //<span style='margin-left: 3px; font-weight: normal; font-size: 12px'>September 17th, 2013 19:51 | StarCraft 2</span>
-                    //To do: Scrape the post Date/Time for TL Esports posts
+                    string dateLine = HTMLUtilities.InnerText(HTMLUtilities.StringFromTag(postTotalBlock, "<div style='margin-top: 2px'>", "</span>"));
+                    int dateDelimiterIndex = dateLine.IndexOf("|");
+                    string tlesDateTimeString = dateLine.Substring(0, dateDelimiterIndex).Replace("th,", "").Replace("rd,", "").Replace("st,","").Replace("nd,", "");
+                    postDateTime = Convert.ToDateTime(tlesDateTimeString);
                 }
 
                 //Scrape the comment text
