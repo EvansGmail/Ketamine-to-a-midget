@@ -20,8 +20,8 @@ namespace ConsoleApplication1
             //UTF8 encoding required for Chinese characters (but still won't work in console window)
             Console.OutputEncoding = System.Text.Encoding.UTF8;
             //dayaStuff.myData is the save follow for followed players. It is currently a binary file; a move to XML may make sense later to make it easier to hack/extend.
-            string fileName = "dataStuff.myData";
-            
+            string followedfileName = "dataStuff.myData";
+            string cachedPageFileName = "postPageCache.myData";
 
             List<personObject> tlPeople = new List<personObject>();
             List<personObject> followedTLPeople = new List<personObject>();
@@ -36,7 +36,8 @@ namespace ConsoleApplication1
 
             Console.WriteLine("Done! " + tlPeople.Count.ToString() + " players found!");
 
-            DeserializeFollowedPlayers(fileName, tlPeople, followedTLPeople); //Take players from "filename" and put them into List tlPeople (or create fileName if it doesn't exist)
+            DeserializeFollowedPlayers(followedfileName, tlPeople, followedTLPeople); //Take players from "followedfilename" and put them into List tlPeople (or create fileName if it doesn't exist)
+            DeserializeCachedPages(cachedPageFileName, cachedPostPages, tlPeople); //Take the posts from "cachedPagesFileName" and put them into List cachedPostPages (or create fillename if it doesn't exist)
             
             int quitThisGame = 0;
 
@@ -95,13 +96,13 @@ namespace ConsoleApplication1
                         Console.WriteLine("Type the Name of the person to follow:");
                         Console.WriteLine();
                         string personToFollow = Console.ReadLine().ToUpper();
-                        followAndSerialize(personToFollow, tlPeople, followedTLPeople, fileName).Wait();
+                        followAndSerialize(personToFollow, tlPeople, followedTLPeople, followedfileName).Wait();
                         break;
                     case "C":
                         Console.WriteLine("Type the Liquipedia Name of the person to unfollow:");
                         Console.WriteLine();
                         string personToUnfollow = Console.ReadLine().ToUpper();
-                        unfollowAndStopSerializing(personToUnfollow, tlPeople, followedTLPeople, fileName);
+                        unfollowAndStopSerializing(personToUnfollow, tlPeople, followedTLPeople, followedfileName);
                         break;
                     case "D":
                         foreach (personObject person in tlPeople)
@@ -140,11 +141,13 @@ namespace ConsoleApplication1
                         if (personForPosts.tlName != null)
                         { 
                             HttpClient client2 = new HttpClient();
-                            List<tlPostObject> listOfReturnedPosts = grabUsersTlPosts(personForPosts, client2, cachedPostPages, 8, tlPeople, fileName).Result;
+                            List<tlPostObject> listOfReturnedPosts = grabUsersTlPosts(personForPosts, client2, cachedPostPages, 8, tlPeople, followedfileName, cachedPageFileName).Result;
                             
                             int countPosts = 1;
 
                             countPosts = displayPostList(listOfReturnedPosts, countPosts);
+
+                            wipeAndRecreatePageCache(cachedPageFileName, cachedPostPages);
 
                             Console.WriteLine("Do you want to: \n" +
                                                 "     A. View a post in situ on a thread page? \n" +
@@ -181,7 +184,7 @@ namespace ConsoleApplication1
                                         Console.Clear();
                                         
                                         //Grabs the single Post
-                                        tlPostObject postFromUri_ex = getComment(thread_Uri_Stub_ex, (postID_ex + offSet_ex), cachedPostPages, tlPeople, fileName).Result;
+                                        tlPostObject postFromUri_ex = getComment(thread_Uri_Stub_ex, (postID_ex + offSet_ex), cachedPostPages, tlPeople, followedfileName, cachedPageFileName).Result;
                                     
                                         var personFollowed = from i in tlPeople
                                                              where (i.tlName == postFromUri_ex.Author)
@@ -257,10 +260,13 @@ namespace ConsoleApplication1
                             {
                                 HttpClient groupclient = new HttpClient();
                                 Console.WriteLine("Grabbing " + followedPlayer.tlName + "'s posts.");
-                                List<tlPostObject> listOfEveryonesPosts = grabUsersTlPosts(followedPlayer, groupclient, cachedPostPages, 3, tlPeople, fileName).Result;
+                                List<tlPostObject> listOfEveryonesPosts = grabUsersTlPosts(followedPlayer, groupclient, cachedPostPages, 3, tlPeople, followedfileName, cachedPageFileName).Result;
                                 updatedPlayerCounter++;
                             }
                         }
+
+                        wipeAndRecreatePageCache(cachedPageFileName, cachedPostPages);
+
                         Console.WriteLine();
                         Console.WriteLine("Successfully updated " + updatedPlayerCounter + " people's posts out of " + followedTLPeople.Count().ToString() + " followed people total.");
                         Console.WriteLine();
@@ -310,6 +316,18 @@ namespace ConsoleApplication1
             }
 
 
+        }
+
+        private static void wipeAndRecreatePageCache(string cachedPageFileName, List<tlCachedPostPage> cachedPostPages)
+        {
+            Console.WriteLine("Serializing all cached post pages.");
+            File.Delete(cachedPageFileName);
+            foreach (tlCachedPostPage w in cachedPostPages)
+            {
+                StartSerializingCachedPage(cachedPageFileName, w);
+            }
+            Console.WriteLine("Done serializing.");
+            Console.WriteLine();
         }
 
         private static int displayPostList(List<tlPostObject> listOfReturnedPosts, int countPosts)
@@ -509,7 +527,7 @@ namespace ConsoleApplication1
             return await Task.Run(() => person);
         }
 
-        private static async Task<List<tlPostObject>> grabUsersTlPosts(personObject person, HttpClient client, List<tlCachedPostPage> cachedPostPages, int postsToGrab, List<personObject> tlPeople, string fileName)
+        private static async Task<List<tlPostObject>> grabUsersTlPosts(personObject person, HttpClient client, List<tlCachedPostPage> cachedPostPages, int postsToGrab, List<personObject> tlPeople, string fileName, string cachedPageFileName)
         {
             //It's actually better to grab 4+ of these posts... otherwise the searches for individual posters happen too fast and TL rate limits you.
             List<tlPostObject> returnedPosts = new List<tlPostObject> { };
@@ -592,14 +610,14 @@ namespace ConsoleApplication1
 
                     if (thisPost_pageNum != lastPost_pageNum)
                     {
-                        taskFactoryTasks.Add(Task.Factory.StartNew(() => grabbedPostList.Add(getComment(thread_Uri_stub, postNumber, cachedPostPages, tlPeople, fileName))));
+                        taskFactoryTasks.Add(Task.Factory.StartNew(() => grabbedPostList.Add(getComment(thread_Uri_stub, postNumber, cachedPostPages, tlPeople, fileName, cachedPageFileName))));
                     }
                     else
                     {
                         //This delayed task is running up against the one it is supposed to be waiting on...
                         Task cachedCommentTask = taskFactoryTasks.Last().ContinueWith((antecedent) =>
                                                     {
-                                                        returnedPosts.Add(getComment(thread_Uri_stub, postNumber, cachedPostPages, tlPeople, fileName).Result);
+                                                        returnedPosts.Add(getComment(thread_Uri_stub, postNumber, cachedPostPages, tlPeople, fileName, cachedPageFileName).Result);
                                                     });
                     }
 
@@ -660,7 +678,7 @@ namespace ConsoleApplication1
         /// <param name="cachedPostPages">The list of cached pages.</param>
         /// <param name="tlPeople">The list of people.</param>
         /// <returns></returns>
-        private static async Task<tlPostObject> getComment(string thread_Uri_stub, int postNumber, List<tlCachedPostPage> cachedPostPages, List<personObject> tlPeople, string fileName)
+        private static async Task<tlPostObject> getComment(string thread_Uri_stub, int postNumber, List<tlCachedPostPage> cachedPostPages, List<personObject> tlPeople, string fileName, string cachedPageFileName)
         {
             tlPostObject requestedPost = new tlPostObject();
             //I think I should use a separate client for each comment. That way, in the future, I can grab the pages concurrently
@@ -686,10 +704,10 @@ namespace ConsoleApplication1
 
                 Console.WriteLine("Reading page from the web...");
 
-                requestedPost = await grabPostAndCachePage(cachedPage, commentClient, thread_page_Uri, postNumber, tlPeople, cachedPostPages, fileName);
+                requestedPost = await grabPostAndCachePage(cachedPage, commentClient, thread_page_Uri, postNumber, tlPeople, cachedPostPages, fileName, cachedPageFileName);
                 requestedPost.threadStubUri = new Uri(thread_Uri_stub);
                 cachedPage.needsRefresh = false;
-
+                
                 if (requestedPost == null)
                 {
                     return null;
@@ -711,7 +729,7 @@ namespace ConsoleApplication1
                         Uri postLinkUri = new Uri(cachedPage.prevThreadPage.ToString());
                         Console.WriteLine("     Retrieving the next page...");
                         Console.Write("     ");
-                        await getComment(thread_Uri_stub, prevPostNumber, cachedPostPages, tlPeople, fileName);
+                        await getComment(thread_Uri_stub, prevPostNumber, cachedPostPages, tlPeople, fileName, cachedPageFileName);
                     }
 
                 }
@@ -728,7 +746,7 @@ namespace ConsoleApplication1
                         Uri postLinkUri = new Uri(cachedPage.nextThreadPage.ToString());
                         Console.WriteLine("     Retrieving the next page from the web...");
                         Console.Write("     ");
-                        await getComment(thread_Uri_stub, nextPostNumber, cachedPostPages, tlPeople, fileName);
+                        await getComment(thread_Uri_stub, nextPostNumber, cachedPostPages, tlPeople, fileName, cachedPageFileName);
                     }
                 }
 
@@ -788,7 +806,7 @@ namespace ConsoleApplication1
                 cachedPageObject.prevThreadPage = null;
                 cachedPageObject.nextThreadPage = null;
 
-                //  ...add it to the list of cached pages, and...
+                //  ...add it to the list of cached pages, return it, and...
                 cachedPostPages.Add(cachedPageObject);
                 return cachedPageObject;
                 //  ...add the posts on the page to it (do this later, so that you don't have to call it twice) 
@@ -819,7 +837,6 @@ namespace ConsoleApplication1
 
         private static tlCachedPostPage getCachedPage(List<tlCachedPostPage> cachedPostPages, tlPostObject postObject) //Overload for post object
         {
-            //This doesn't work right now because I can't get the Uri stub directly from the post object.
             string Uri_thread_stub = ThreadStubStringFromThreadPageUri(postObject.commentUri);
             return getCachedPage(cachedPostPages, Uri_thread_stub, postObject.commentNumber);
         }
@@ -840,7 +857,7 @@ namespace ConsoleApplication1
             return (1 + (PostNum - 1)/20 - ((PostNum - 1) % 20)/20);
         }
 
-        private static async Task<tlPostObject> grabPostAndCachePage(tlCachedPostPage cachedPage, HttpClient client, Uri postLink, int postNumber, List<personObject> tlPeople, List<tlCachedPostPage> cachedPostPages, string fileName)
+        private static async Task<tlPostObject> grabPostAndCachePage(tlCachedPostPage cachedPage, HttpClient client, Uri postLink, int postNumber, List<personObject> tlPeople, List<tlCachedPostPage> cachedPostPages, string fileName, string cachedPageFileName)
         {
             tlPostObject returnPost = new tlPostObject();
 
@@ -993,7 +1010,7 @@ namespace ConsoleApplication1
                             //Need to re-serialize; not sure if this will totally break (double-follow) or not
                             //Also, cap this at something for now
                             StopSerializing(fileName, foundAuthor);
-                            StartSerializing(fileName, foundAuthor); //The single dumbest two lines of code I may ever write.
+                            StartSerializingPerson(fileName, foundAuthor); //The single dumbest two lines of code I may ever write.
                             if (postDifference > 8)
                             {
                                 postDifference = 8;
@@ -1002,7 +1019,7 @@ namespace ConsoleApplication1
                             //Could hypothetically run more than once because of the while block, so I will add to a List and await them at the end
                             //This way execution doesn't halt here; and grabPostAndCachePage runs asynchronously, so it won't hold up other grabs either
                             //Not sure how to test this since it's such a rare case... hopefully TheDwf posts sometime while I'm running it!
-                            grabTlPostListTasks.Add(grabUsersTlPosts(foundAuthor, updatePostsClient, cachedPostPages, postDifference, tlPeople, fileName));
+                            grabTlPostListTasks.Add(grabUsersTlPosts(foundAuthor, updatePostsClient, cachedPostPages, postDifference, tlPeople, fileName, cachedPageFileName));
                         }
                     }
                     
@@ -1195,7 +1212,7 @@ namespace ConsoleApplication1
             }
 
             cachedPage.pageNumber = currentPageNumber;
-
+            
             while (grabTlPostListTasks.Count() > 0)
             {
                 Task firstProcessedList = await Task.WhenAny(grabTlPostListTasks);
@@ -1320,6 +1337,8 @@ namespace ConsoleApplication1
             s.Close();
         }
 
+
+
         private static async Task followAndSerialize(string personToFollow, List<personObject> tlPeople, List<personObject> followedTLPeople, string fileName)
         {
             var personToFollowObj = (from u in tlPeople
@@ -1370,13 +1389,13 @@ namespace ConsoleApplication1
                         await extractPersonDetail(followPersonObject, tlPeople);
                         Console.WriteLine("Following " + followPersonObject.tlName);
                     }
-                    StartSerializing(fileName, followPersonObject);
+                    StartSerializingPerson(fileName, followPersonObject);
                 }
                 return;
             }
         }
 
-        private static void StartSerializing(string fileName, personObject followPersonObject)
+        private static void StartSerializingPerson(string fileName, personObject followPersonObject)
         {
             FileStream s = new FileStream(fileName, FileMode.Append);
             IFormatter formatter = new BinaryFormatter();
@@ -1450,6 +1469,99 @@ namespace ConsoleApplication1
                 FileStream d = new FileStream(fileName, FileMode.Create);
                 d.Close();
             }
+        }
+
+        private static void StartSerializingCachedPage(string cachedPageFileName, tlCachedPostPage cachedPageObject)
+        {
+            FileStream s = new FileStream(cachedPageFileName, FileMode.Append);
+            IFormatter formatter = new BinaryFormatter();
+            formatter.Serialize(s, cachedPageObject);
+            s.Close();
+        }
+
+        private static void DeserializeCachedPages(string cachedfileName, List<tlCachedPostPage> cachedPages, List<personObject> tlPeople)
+        {
+            Console.WriteLine("Deserializing cached pages from the cached file.");
+            if (File.Exists(cachedfileName))
+            {
+                FileStream d = new FileStream(cachedfileName, FileMode.Open);
+                IFormatter formatter = new BinaryFormatter();
+                if (d.Length != 0)
+                {
+                    while (d.Position != d.Length)
+                    {
+                        tlCachedPostPage t = (tlCachedPostPage)formatter.Deserialize(d);
+
+                        cachedPages.Add(t);
+
+                        foreach (tlPostObject u in t.posts)
+                        {
+                            if (u.Author != null)
+                            {
+                                var personMatch = (from x in tlPeople
+                                                   where x.tlName == u.Author
+                                                   select x);
+                                personObject tempPerson = personMatch.FirstOrDefault();
+
+                                if (tempPerson != null && tempPerson.tlPostList != null)
+                                {
+                                    tempPerson.tlPostList.Add(u);
+                                }
+                                else if (tempPerson != null && tempPerson.tlPostList == null)
+                                {
+                                    //This now actually runs the first time a person's post gets added to their personObject.tlPostList
+                                    tempPerson.tlPostList = new List<tlPostObject>();
+                                    tempPerson.tlPostList.Add(u);
+                                }
+                            }
+
+                        }
+                    }
+                }
+                d.Close();
+                Console.WriteLine("Done derserializing");
+            }
+            else
+            {
+                FileStream d = new FileStream(cachedfileName, FileMode.Create);
+                d.Close();
+            }
+        }
+
+        private static void stopSerializingCachedPage(string cachedPageFileName, tlCachedPostPage pageToRemove) //For when an updated version of a page has been scraped
+        {
+            Console.WriteLine("Removing a cached page from the cache file.");
+            FileStream s = new FileStream(cachedPageFileName, FileMode.Open);
+            IFormatter formatter = new BinaryFormatter();
+            while (s.Position != s.Length)
+            {
+                long objStartPosition = s.Position;
+                tlCachedPostPage v = (tlCachedPostPage)formatter.Deserialize(s);
+
+                if (v.cachedPageRemoteUri == pageToRemove.cachedPageRemoteUri)
+                {
+                    long nextObjPosition = s.Position;
+                    //Need to remove data from objStartPosition to (s.Position - 1). So, copy everything from s.Position to the end, and move is to objStartPosition, then truncate
+                    long bytesToGrab = s.Length - s.Position;
+                    int[] bytesLeft = new int[bytesToGrab];
+                    while (s.Position != s.Length)
+                    {
+                        bytesLeft[s.Position - nextObjPosition] = s.ReadByte();
+                    }
+
+                    BinaryWriter bw = new BinaryWriter(s);
+                    bw.Seek((int)objStartPosition, SeekOrigin.Begin);
+                    for (int i = 0; i < bytesToGrab; i++)
+                    {
+                        bw.Write((byte)bytesLeft[i]);
+                    }
+                    s.SetLength(s.Position);
+                    //Set the position equal to the end after you truncate the file; that way this while loop will exit
+                }
+
+            }
+            s.Close();
+            Console.WriteLine("Done removing.");
         }
 
         static async Task ScrapeGlobalPlayerLists(List<personObject> tlPeople)
@@ -1929,7 +2041,8 @@ namespace ConsoleApplication1
             }
         }
         
-        public class tlCachedPostPage //A single cached post page; collected by Objects and in one master list
+        [Serializable()]
+        public class tlCachedPostPage  : ISerializable //A single cached post page; collected by Objects and in one master list
         {
             public tlCachedPostPage()
             {
@@ -1946,6 +2059,7 @@ namespace ConsoleApplication1
             /// <param name="nextThreadPage">A Uri object pointing to the next page in this cachedPage's thread, if any.</param>
             /// <param name="pageNumber">The page number of the cached page as it appeared in it's original thread</param>
             /// <param name="prevThreadPage">A Uri object pointing to the previous page in this cachedPage's thread, if any.</param>
+            
             public tlCachedPostPage(int cachedPageUniqueThreadID,
                                     Uri cachedPageRemoteUri,
                                     bool needsRefresh,
@@ -2011,9 +2125,37 @@ namespace ConsoleApplication1
                 get { return nextThreadPageValue; }
                 set { nextThreadPageValue = value; }
             }
+
+            // Implement this method to serialize data. The method is called  
+            // on serialization. 
+            public void GetObjectData(SerializationInfo info, StreamingContext context)
+            {
+                // Use the AddValue method to specify serialized values.
+                info.AddValue("UniqueID", UniqueID, typeof(int));
+                info.AddValue("cachedPageRemoteUri", cachedPageRemoteUri, typeof(Uri));
+                info.AddValue("needsRefresh", needsRefresh, typeof(bool));
+                info.AddValue("posts", posts, typeof(List<tlPostObject>));
+                info.AddValue("prevThreadPage", prevThreadPage, typeof(Uri));
+                info.AddValue("pageNumber", pageNumber, typeof(int));
+                info.AddValue("nextThreadPage", nextThreadPage, typeof(Uri));
+            }
+
+            // The special constructor is used to deserialize values. 
+            public tlCachedPostPage(SerializationInfo info, StreamingContext context)
+            {
+                // Reset the property value using the GetValue method.
+                UniqueID = (int)info.GetValue("UniqueID", typeof(int));
+                cachedPageRemoteUri = (Uri)info.GetValue("cachedPageRemoteUri", typeof(Uri));
+                needsRefresh = (bool)info.GetValue("needsRefresh", typeof(bool));
+                posts = (List<tlPostObject>)info.GetValue("posts", typeof(List<tlPostObject>));
+                prevThreadPage = (Uri)info.GetValue("prevThreadPage", typeof(Uri));
+                pageNumber = (int)info.GetValue("pageNumber", typeof(int));
+                nextThreadPage = (Uri)info.GetValue("nextThreadPage", typeof(Uri));
+            }
         }
     
-        public class tlPostObject
+        [Serializable()]
+        public class tlPostObject : ISerializable
         {
             public tlPostObject()
             {
@@ -2108,6 +2250,47 @@ namespace ConsoleApplication1
             {
                 get { return postAuthorValue; }
                 set { postAuthorValue = value; }
+            }
+
+            //int uniqueThreadId,
+            //Uri threadStubUri,
+            //string threadTitle,
+            //string threadSection,
+            //Uri commentUri,
+            //int commentNumber,
+            //string postHTMLContent,
+            //DateTime postDateTime,
+            //string Author
+
+            // Implement this method to serialize data. The method is called  
+            // on serialization. 
+            public void GetObjectData(SerializationInfo info, StreamingContext context)
+            {
+                // Use the AddValue method to specify serialized values.
+                info.AddValue("uniqueThreadId", uniqueThreadId, typeof(int));
+                info.AddValue("threadStubUri", threadStubUri, typeof(Uri));
+                info.AddValue("threadTitle", threadTitle, typeof(string));
+                info.AddValue("threadSection", threadSection, typeof(string));
+                info.AddValue("commentUri", commentUri, typeof(Uri));
+                info.AddValue("commentNumber", commentNumber, typeof(int));
+                info.AddValue("postContent", postContent, typeof(string));
+                info.AddValue("postDateTime", postDateTime, typeof(DateTime));
+                info.AddValue("Author", Author, typeof(string));
+            }
+
+            // The special constructor is used to deserialize values. 
+            public tlPostObject(SerializationInfo info, StreamingContext context)
+            {
+                // Reset the property value using the GetValue method.
+                uniqueThreadId = (int)info.GetValue("uniqueThreadId", typeof(int));
+                threadStubUri = (Uri)info.GetValue("threadStubUri", typeof(Uri));
+                threadTitle = (string)info.GetValue("threadTitle", typeof(string));
+                threadSection = (string)info.GetValue("threadSection", typeof(string));
+                commentUri = (Uri)info.GetValue("commentUri", typeof(Uri));
+                commentNumber = (int)info.GetValue("commentNumber", typeof(int));
+                postContent = (string)info.GetValue("postContent", typeof(string));
+                postDateTime = (DateTime)info.GetValue("postDateTime", typeof(DateTime));
+                Author = (string)info.GetValue("Author", typeof(string));
             }
         }
     }
