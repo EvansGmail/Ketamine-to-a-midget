@@ -1598,6 +1598,7 @@ namespace ConsoleApplication1
                         int countryEnd = 0;
                         int tableStart = 0;
                         int tableEnd = 0;
+                        string tr_can_str = "<tr style=\"background-color:";
                         int tr_candidate = 0;
                         int tr_end = 0;
                         int td_start = 0;
@@ -1649,8 +1650,8 @@ namespace ConsoleApplication1
                                     //Why the tr bgcolor? I'm glad you asked! Liquipedia colors the player table rows based on a player's race (Terran,
                                     //Zerg or Protoss,) so it's an easy way to discern whether a row is a player, or a header, or a bunch of blanks.
                                     //It will break if TL ever redesigns these pages, but then... what wouldn't break?
-                                    
-                                    tr_candidate = responseString.IndexOf("<tr bgcolor=", c); //finds a <tr> with a bgcolor specified, which should be a player
+
+                                    tr_candidate = responseString.IndexOf(tr_can_str, c); //finds a <tr> with a bgcolor specified, which should be a player
                                     
                                     if (tr_candidate == -1)
                                     {
@@ -1663,7 +1664,7 @@ namespace ConsoleApplication1
                                     }
                                                                         
                                     tr_end = responseString.IndexOf("</tr>", tr_candidate);
-                                    string colorCode = responseString.Substring(tr_candidate + 13, 7); //grabs just the 7-character color code
+                                    string colorCode = responseString.Substring(tr_candidate + tr_can_str.Length, 7); //grabs just the 7-character color code
 
                                     if (colorCode.Equals("#B8B8F2") //blue (Terran)
                                         || colorCode.Equals("#B8F2B8") //green (Protoss)
@@ -1743,6 +1744,10 @@ namespace ConsoleApplication1
                                         }
                                         //Write this tempPerson to the playerObject list
                                         tlPeople.Add(tempPerson);
+                                    }
+                                    else
+                                    {
+                                        Console.WriteLine(colorCode);
                                     }
                                     //Move the starting point to look for a new table to the last <tr> end
                                     c = tr_end;
