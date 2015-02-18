@@ -1600,6 +1600,7 @@ namespace ConsoleApplication1
                         int tableEnd = 0;
                         string tr_can_str = "<tr style=\"background-color:";
                         int tr_candidate = 0;
+                        int tr_color_end = 0;
                         int tr_end = 0;
                         int td_start = 0;
                         int td_end = 0;
@@ -1664,12 +1665,17 @@ namespace ConsoleApplication1
                                     }
                                                                         
                                     tr_end = responseString.IndexOf("</tr>", tr_candidate);
-                                    string colorCode = responseString.Substring(tr_candidate + tr_can_str.Length, 7); //grabs just the 7-character color code
+                                    tr_color_end = responseString.IndexOf("\"", tr_candidate + tr_can_str.Length + 1);
+                                    string colorCode = responseString.Substring(tr_candidate + tr_can_str.Length, tr_color_end - tr_candidate - tr_can_str.Length); //grabs just the color code
 
-                                    if (colorCode.Equals("#B8B8F2") //blue (Terran)
-                                        || colorCode.Equals("#B8F2B8") //green (Protoss)
-                                        || colorCode.Equals("#F2B8B8") //pink (Zerg)
-                                        || colorCode.Equals("#F2E8B8")) //ugly tan color (Random?)
+                                    if (colorCode.Equals("#B8B8F2;") //blue (Terran)
+                                        || colorCode.Equals("#B8F2B8;") //green (Protoss)
+                                        || colorCode.Equals("#F2B8B8;") //pink (Zerg)
+                                        || colorCode.Equals("#F2E8B8;") //ugly tan color (Random?)
+                                        || colorCode.Equals("rgb(184,242,184);")
+                                        || colorCode.Equals("rgb(242,184,184);")
+                                        || colorCode.Equals("rgb(184,184,242);")
+                                        || colorCode.Equals("rgb(242,232,184);"))
                                     {
                                         //We've found a player TR! So grab the info out of each <td> (some may be empty!) and spill it to the player database
                                         //Creating a new person to put information into
@@ -1747,7 +1753,7 @@ namespace ConsoleApplication1
                                     }
                                     else
                                     {
-                                        Console.WriteLine(colorCode);
+                                        //Should be all the "lightgrey;" useless table rows
                                     }
                                     //Move the starting point to look for a new table to the last <tr> end
                                     c = tr_end;
