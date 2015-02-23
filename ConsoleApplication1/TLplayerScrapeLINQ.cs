@@ -248,22 +248,7 @@ namespace ConsoleApplication1
                         Console.WriteLine("Found " + cachedPostPages.Count() + " cached thread pages total.");
                         break;
                     case "I":
-                        int updatedPlayerCounter = 0;
-                        foreach (personObject followedPlayer in followedTLPeople)
-                        {
-                            if (followedPlayer.tlName == null)
-                            {
-                                extractPersonDetail(followedPlayer, tlPeople).Wait();
-                            }
-
-                            if (followedPlayer.tlName != null)
-                            {
-                                HttpClient groupclient = new HttpClient();
-                                Console.WriteLine("Grabbing " + followedPlayer.tlName + "'s posts.");
-                                List<tlPostObject> listOfEveryonesPosts = grabUsersTlPosts(followedPlayer, groupclient, cachedPostPages, 3, tlPeople, followedfileName, cachedPageFileName).Result;
-                                updatedPlayerCounter++;
-                            }
-                        }
+                        int updatedPlayerCounter = updateAllFollowedPlayerPosts(followedfileName, cachedPageFileName, tlPeople, followedTLPeople, cachedPostPages).Result;
 
                         wipeAndRecreatePageCache(cachedPageFileName, cachedPostPages);
 
@@ -278,11 +263,6 @@ namespace ConsoleApplication1
                             if ((h.tlPostList != null) && (h.tlPostList.Count() != 0))
                             {
                                 followedPosts.AddRange(h.tlPostList);
-
-                                //foreach (tlPostObject g in h.tlPostList)
-                                //{
-                                //    followedPosts.Add(g);
-                                //}
                             }
                         }
                         var orderedPosts = from f in followedPosts
@@ -290,10 +270,7 @@ namespace ConsoleApplication1
                                            select f;
 
                         foreach (tlPostObject e in orderedPosts)
-                        { 
-                        //string postsTotal2 = "";
-                        //string postsTotal2 = ", " + e.Author.ToString() + " posts";
-                                    
+                        {           
                         Console.WriteLine("-------------------------------------------------------------------------------");
                         Console.WriteLine("Comment #" + e.commentNumber + " by user " + e.Author + " on " + e.postDateTime);
                         Console.WriteLine();
@@ -316,6 +293,39 @@ namespace ConsoleApplication1
             }
 
 
+        }
+
+        private static async Task<int> updateAllFollowedPlayerPosts(string followedfileName, string cachedPageFileName, List<personObject> tlPeople, List<personObject> followedTLPeople, List<tlCachedPostPage> cachedPostPages)
+        {
+            int updatedPlayerCounter = 0;
+
+            System.TimeSpan delayTime = new System.TimeSpan(0, 0, 3);
+            System.DateTime continueWhen = System.DateTime.Now; //This will start the first search right away
+
+            foreach (personObject followedPlayer in followedTLPeople)
+            {
+                if (followedPlayer.tlName == null)
+                {
+                    extractPersonDetail(followedPlayer, tlPeople).Wait();
+                }
+
+                if (followedPlayer.tlName != null)
+                {
+                    HttpClient groupclient = new HttpClient();
+                    Console.WriteLine("Grabbing " + followedPlayer.tlName + "'s posts.");
+
+                    while (System.DateTime.Now < continueWhen)
+                    {
+                        Console.WriteLine("Waiting half a second to avoid TL's rate limit.");
+                        await Task.Delay(500);
+                    }
+
+                    continueWhen = System.DateTime.Now.Add(delayTime);
+                    List<tlPostObject> listOfEveryonesPosts = await grabUsersTlPosts(followedPlayer, groupclient, cachedPostPages, 3, tlPeople, followedfileName, cachedPageFileName);
+                    updatedPlayerCounter++;
+                }
+            }
+            return updatedPlayerCounter;
         }
 
         private static void wipeAndRecreatePageCache(string cachedPageFileName, List<tlCachedPostPage> cachedPostPages)
