@@ -139,10 +139,14 @@ namespace ConsoleApplication1
                         }
                             
                         if (personForPosts.tlName != null)
-                        { 
+                        {
+                            List<tlPostObject> listOfReturnedPosts = new List<tlPostObject>();
                             HttpClient client2 = new HttpClient();
-                            List<tlPostObject> listOfReturnedPosts = grabUsersTlPosts(personForPosts, client2, cachedPostPages, 8, tlPeople, followedfileName, cachedPageFileName).Result;
-                            
+
+                            using (client2) { 
+                                listOfReturnedPosts = grabUsersTlPosts(personForPosts, client2, cachedPostPages, 8, tlPeople, followedfileName, cachedPageFileName).Result;
+                            }
+
                             int countPosts = 1;
 
                             countPosts = displayPostList(listOfReturnedPosts, countPosts);
@@ -267,7 +271,7 @@ namespace ConsoleApplication1
                         }
                         var orderedPosts = from f in followedPosts
                                            orderby f.postDateTime
-                                           select f;
+                                           select f;    //The orderby is going to be totally broken now... :/
 
                         foreach (tlPostObject e in orderedPosts)
                         {           
@@ -312,17 +316,20 @@ namespace ConsoleApplication1
                 if (followedPlayer.tlName != null)
                 {
                     HttpClient groupclient = new HttpClient();
-                    Console.WriteLine("Grabbing " + followedPlayer.tlName + "'s posts.");
 
-                    while (System.DateTime.Now < continueWhen)
-                    {
-                        Console.WriteLine("Waiting half a second to avoid TL's rate limit.");
-                        await Task.Delay(500);
-                    }
+                    using (groupclient) { 
+                        Console.WriteLine("Grabbing " + followedPlayer.tlName + "'s posts.");
 
-                    continueWhen = System.DateTime.Now.Add(delayTime);
-                    List<tlPostObject> listOfEveryonesPosts = await grabUsersTlPosts(followedPlayer, groupclient, cachedPostPages, 3, tlPeople, followedfileName, cachedPageFileName);
-                    updatedPlayerCounter++;
+                        while (System.DateTime.Now < continueWhen)
+                        {
+                            Console.WriteLine("Waiting half a second to avoid TL's rate limit.");
+                            await Task.Delay(500);
+                        }
+
+                        continueWhen = System.DateTime.Now.Add(delayTime);
+                        List<tlPostObject> listOfEveryonesPosts = await grabUsersTlPosts(followedPlayer, groupclient, cachedPostPages, 3, tlPeople, followedfileName, cachedPageFileName);
+                        updatedPlayerCounter++;
+                        }
                 }
             }
             return updatedPlayerCounter;
@@ -400,7 +407,14 @@ namespace ConsoleApplication1
                 {
                     Console.WriteLine("No saved TL.net profile. Searching TL.net...");
                     HttpClient tlForumClient = new HttpClient();
-                    string profileString = HTMLUtilities.getHTMLStringFromUriAsync(tlForumClient, new Uri("http://www.teamliquid.net/forum/profile.php?user=" + personString)).Result;
+
+                    string profileString;
+                    
+                    using(tlForumClient)
+                    { 
+                        profileString = HTMLUtilities.getHTMLStringFromUriAsync(tlForumClient, new Uri("http://www.teamliquid.net/forum/profile.php?user=" + personString)).Result;
+                    }
+
                     if (profileString == null)
                     { 
                         return null;
@@ -547,12 +561,17 @@ namespace ConsoleApplication1
             {
                 Console.WriteLine("You searched too fast. Slow down!");
                 System.Threading.Thread.Sleep(5000);
+                
                 HttpClient waitClient = new HttpClient();
-                tlPostsResultPage = await HTMLUtilities.getHTMLStringFromUriAsync(waitClient, postsPage);
-                if (tlPostsResultPage.IndexOf("You are performing searches too quickly") != -1)
-                {
-                    Console.WriteLine("You are STILL performing searches too quickly!!! Aborting.");
-                    Console.ReadKey();
+                using (waitClient) { 
+                    
+                    tlPostsResultPage = await HTMLUtilities.getHTMLStringFromUriAsync(waitClient, postsPage);
+                    
+                    if (tlPostsResultPage.IndexOf("You are performing searches too quickly") != -1)
+                    {
+                        Console.WriteLine("You are STILL performing searches too quickly!!! Aborting.");
+                        Console.ReadKey();
+                    }
                 }
             }
 
@@ -564,7 +583,7 @@ namespace ConsoleApplication1
 
             List<Task> taskFactoryTasks = new List<Task>();
             List<Task<tlPostObject>> grabbedPostList = new List<Task<tlPostObject>>();
-            
+            //List<tlPostObject> grabbedPostList = new List<tlPostObject>();
 
             while (readPosition != -1 && readPosition < postsBlock.Length && postCount < postsToGrab)
             {
@@ -621,10 +640,12 @@ namespace ConsoleApplication1
                     if (thisPost_pageNum != lastPost_pageNum)
                     {
                         taskFactoryTasks.Add(Task.Factory.StartNew(() => grabbedPostList.Add(getComment(thread_Uri_stub, postNumber, cachedPostPages, tlPeople, fileName, cachedPageFileName))));
+                        //grabbedPostList.Add(getComment(thread_Uri_stub, postNumber, cachedPostPages, tlPeople, fileName, cachedPageFileName).Result);
                     }
                     else
                     {
                         //This delayed task is running up against the one it is supposed to be waiting on...
+                        //returnedPosts.Add(getComment(thread_Uri_stub, postNumber, cachedPostPages, tlPeople, fileName, cachedPageFileName).Result);
                         Task cachedCommentTask = taskFactoryTasks.Last().ContinueWith((antecedent) =>
                                                     {
                                                         returnedPosts.Add(getComment(thread_Uri_stub, postNumber, cachedPostPages, tlPeople, fileName, cachedPageFileName).Result);
@@ -656,6 +677,7 @@ namespace ConsoleApplication1
                 taskFactoryTasks.Remove(firstFactoryTask);
 
                 Task<tlPostObject> firstProcessedPost = await Task.WhenAny(grabbedPostList);
+                //tlPostObject firstProcessedPost = grabbedPostList.First<tlPostObject>();
                 grabbedPostList.Remove(firstProcessedPost);
                 tlPostObject thisProcessedPost = await firstProcessedPost;
                 returnedPosts.Add(thisProcessedPost);
@@ -711,16 +733,19 @@ namespace ConsoleApplication1
             if (cachedPage.needsRefresh)
             {
                 HttpClient commentClient = new HttpClient();
+                using (commentClient)
+                { 
+                    Console.WriteLine("Reading page from the web...");
+                    requestedPost = await grabPostAndCachePage(cachedPage, commentClient, thread_page_Uri, postNumber, tlPeople, cachedPostPages, fileName, cachedPageFileName);
+                }
 
-                Console.WriteLine("Reading page from the web...");
-
-                requestedPost = await grabPostAndCachePage(cachedPage, commentClient, thread_page_Uri, postNumber, tlPeople, cachedPostPages, fileName, cachedPageFileName);
-                requestedPost.threadStubUri = new Uri(thread_Uri_stub);
-                cachedPage.needsRefresh = false;
-                
                 if (requestedPost == null)
                 {
                     return null;
+                } else
+                {
+                    requestedPost.threadStubUri = new Uri(thread_Uri_stub);
+                    cachedPage.needsRefresh = false;
                 }
                 //...just pass the cache page (which has to exist at this point) and have it update values right in the method
                 //This is fine because literally every time you pull the HttpRequest, you should update the object cache
@@ -905,8 +930,8 @@ namespace ConsoleApplication1
             string pagesBlock = "";
             bool isThereANextPage = new bool();
             
-            int pagesBlockStart = threadPage.IndexOf("<td align=\"right\">", subforumStart + subforumLength);
-            int pagesBlockEnd = threadPage.IndexOf("</td>", pagesBlockStart) + "</td>".Length;
+            int pagesBlockStart = threadPage.IndexOf("<div class=\"pagination\">", subforumStart + subforumLength);
+            int pagesBlockEnd = threadPage.IndexOf("</div>", pagesBlockStart) + "</div>".Length;
             int pagesBlockLength = pagesBlockEnd - pagesBlockStart;
             pagesBlock = threadPage.Substring(pagesBlockStart, pagesBlockLength);
             int currPageStart = pagesBlock.IndexOf("<b>") + "<b>".Length;
@@ -937,8 +962,8 @@ namespace ConsoleApplication1
 
             //Scrape the individual posts!
             int readPosition = 0;
-            string startBlock = "<tr><td colspan=\"2\"><a name=\"";
-            string endBlock = "</table><br></td></tr>";
+            string startBlock = "<table id=\"forumtable\"";
+            string endBlock = "<div class=\"fpost-actionable\">";
             List<Task> grabTlPostListTasks = new List<Task>();
 
             while (readPosition != -1)
@@ -951,25 +976,50 @@ namespace ConsoleApplication1
                 //Scrape the post blocks here
                 
                 //Scrape the post link
-                string singlePostLink = "http://www.teamliquid.net" +
-                                        HTMLUtilities.grabHREF(
-                                        HTMLUtilities.StringFromTag(commentBlock, "<a href=\"/forum/viewpost.php?post_id=", " class=\"submessage\""));
+                string singlePostLink = HTMLUtilities.StringFromTag(commentBlock, "<a href=\"/forum/viewpost.php?post_id=", " class=\"submessage\"");
+                
+                if (singlePostLink != null)
+                {
+                    singlePostLink = "http://www.teamliquid.net" + HTMLUtilities.grabHREF(singlePostLink);
+                }else
+                { 
+                    //This is probably a TL self-post (e.g. QXC). Need to grab more than current commentBlock
+                    singlePostLink = postLinkString;
+                    string startTLlink = "<a href=\"/forum";
+                    string endTLlink = "?page";
+                    int singlePostTag_start = commentBlock.IndexOf(startTLlink);
+                    if (singlePostTag_start != -1)
+                    {
+                        int singlePostTag_end = commentBlock.IndexOf(endTLlink, singlePostTag_start);
+                    }
+                    else
+                    {
+                        Console.WriteLine("Error out");
+                    }
+                }
 
-                //Scrape the post Number
-                int singlePostNumber = Convert.ToInt32(
-                                            HTMLUtilities.StringFromParameter(
-                                                HTMLUtilities.StringFromTag(commentBlock, "<a name=\"", "</a>"),
-                                                "name")
-                                            );
+                //Scrape the post Number [Not finding these strings in the TL-posts!]
+                string singlePostString = HTMLUtilities.StringFromTag(commentBlock, "<div class=\"submessage\">#", "</div>");
+                
+                if (singlePostString != null)
+                {
+                    singlePostString = HTMLUtilities.InnerText(singlePostString);
+                    singlePostString = singlePostString.Substring(1, singlePostString.Length - 1);
+                }
+                else
+                {
+                    singlePostString = "1";
+                }
+                int singlePostNumber = Convert.ToInt32(singlePostString);
 
                 //Scrape the post Author
-                string authorBlock = HTMLUtilities.StringFromTag(commentBlock, "<a class=\"submessage gift-plus\" data-user=", "data-post");
+                string authorBlock = HTMLUtilities.StringFromTag(commentBlock, "<div class=\"fpost-username\">", "</div>");
                 string authorName = null;
 
                 if (authorBlock != null)
                 {
-                    string authorBegin = "data-user=\"";
-                    string authorEnd = "\"";
+                    string authorBegin = "<span>";
+                    string authorEnd = "</span>";
                     int authorName_start = authorBlock.IndexOf(authorBegin) + authorBegin.Length;
                     int authorName_length = authorBlock.IndexOf(authorEnd, authorName_start) - authorName_start;
                     authorName = authorBlock.Substring(authorName_start, authorName_length);
@@ -982,12 +1032,12 @@ namespace ConsoleApplication1
 
                 //Scrape the total posts for the author, and, if the author is followed, and the number is higher than the recorded number, grab any new posts
                 //<span class='forummsginfo'>&nbsp;<div class='usericon T10'></div>&nbsp;Pokebunny &nbsp; United States. December 16 2014 14:46. Posts 10276</span>
-                string postTotalBlock = HTMLUtilities.StringFromTag(commentBlock, " ", "</span></td>");
+                string postTotalBlock = HTMLUtilities.StringFromTag(commentBlock, "</span><span class=\"tt-userinfo\">", "<article class=\"forumPost\">");
                 string postTotalString = null;
                 int postsTotal = 0;
                 if (postTotalBlock != null)
                 {
-                    postTotalString = getTextBetween(postTotalBlock, "Posts ", "</span>");
+                    postTotalString = getTextBetween(postTotalBlock, "userinfo\">", " Posts");
                     if (postTotalString != null)
                     {
                         postsTotal = Convert.ToInt32(postTotalString);
@@ -1003,7 +1053,8 @@ namespace ConsoleApplication1
                     Console.WriteLine("This post doesn't have a post total block!");
                 }
 
-                DateTime postDateTime = DateTime.MinValue;
+                //DateTime postDateTime = DateTime.MinValue;
+                string postDateTime = "A long, long time ago";
 
                 if (authorName != null)
                 {
@@ -1033,48 +1084,55 @@ namespace ConsoleApplication1
                         }
                     }
                     
-                    string[] months = { "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December" };
-                    int latestMonthIndex = -1;
-                    string latestMonth = null;
-                    foreach (string testmonth in months)
-                    {
-                        int indexOfMonth = postTotalBlock.LastIndexOf(testmonth);
-                        if (indexOfMonth > latestMonthIndex)
-                        {
-                            latestMonthIndex = indexOfMonth;
-                            latestMonth = testmonth;
-                        }
-                    }
+                    //Teamliquid has done away with posting dates/times, and now just has "X hours/weeks/days ago"
+                    //string[] months = { "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December" };
+                    //int latestMonthIndex = -1;
+                    //string latestMonth = null;
+                    //foreach (string testmonth in months)
+                    //{
+                    //    int indexOfMonth = postTotalBlock.LastIndexOf(testmonth);
+                    //    if (indexOfMonth > latestMonthIndex)
+                    //    {
+                    //        latestMonthIndex = indexOfMonth;
+                    //        latestMonth = testmonth;
+                    //    }
+                    //}
                     
-                    if ((latestMonthIndex != -1) && (latestMonth != null))
-                    {
-                        int endDateIndex = postTotalBlock.IndexOf(". Posts");
-                        if ((endDateIndex != -1) && (endDateIndex > latestMonthIndex))
+                    //if ((latestMonthIndex != -1) && (latestMonth != null))
+                    //{
+                        string startDate = "title=\"Link to this post\">";
+                        string endDate = " ago</a>";
+                        int startDateIndex = postTotalBlock.IndexOf(startDate);
+                        int endDateIndex = postTotalBlock.IndexOf(endDate);
+                        if ((endDateIndex != -1) && startDateIndex != -1) //&& (endDateIndex > latestMonthIndex))
                         {
-                            int dateTimeLength = endDateIndex - latestMonthIndex;
-                            string postDateTimeString = postTotalBlock.Substring(latestMonthIndex, dateTimeLength);
-                            postDateTime = Convert.ToDateTime(postDateTimeString);
+                            int dateTimeLength = endDateIndex - startDateIndex - startDate.Length;
+                            string postDateTimeString = postTotalBlock.Substring(startDateIndex + startDate.Length, dateTimeLength + 4);
+                            //postDateTime = Convert.ToDateTime(postDateTimeString);
+                            postDateTime = postDateTimeString;
                         }
                         else
                         {
-                            postDateTime = DateTime.MinValue;
+                            //postDateTime = DateTime.MinValue;
+                            postDateTime = "A long, long time ago";
                         }
-                    }
+                    //}
                 }
                 else
                 {
                     authorName = "TeamLiquid ESPORTS";
-                    string dateLine = HTMLUtilities.InnerText(HTMLUtilities.StringFromTag(postTotalBlock, "<div style='margin-top: 2px'>", "</span>"));
-                    int dateDelimiterIndex = dateLine.IndexOf("|");
-                    string tlesDateTimeString = dateLine.Substring(0, dateDelimiterIndex).Replace("th,", "").Replace("rd,", "").Replace("st,","").Replace("nd,", "");
-                    postDateTime = Convert.ToDateTime(tlesDateTimeString);
+                    string dateLine = HTMLUtilities.InnerText(HTMLUtilities.StringFromTag(commentBlock, "<div class=\"newspost_date\">", "</div>"));
+                    //int dateDelimiterIndex = dateLine.IndexOf("|");
+                    string tlesDateTimeString = dateLine.Replace("th,", "").Replace("rd,", "").Replace("st,","").Replace("nd,", "");
+                    //postDateTime = Convert.ToDateTime(tlesDateTimeString);
+                    postDateTime = tlesDateTimeString;
                 }
 
                 //Scrape the comment text
-                string commentTags = HTMLUtilities.StringFromTag(commentBlock, "<td class='forumPost'", "</td></tr></table>"); //Same potential problem as above
+                string commentTags = HTMLUtilities.StringFromTag(commentBlock, "<article class=\"forumPost\">", "</article>"); //Same potential problem as above
                 string commentHTML = HTMLUtilities.InnerText(commentTags, 0, commentTags.Length);
                 
-                //Impement updating the postObjects. Pseudocode:
+                //Impement updating the postObjects. Pseudocode (for outline purposes):
                 //
                 //              if cachedPage.postList contains the post
                 //                  update the post info
@@ -2202,7 +2260,7 @@ namespace ConsoleApplication1
                                 Uri commentUri,
                                 int commentNumber,
                                 string postHTMLContent,
-                                DateTime postDateTime,
+                                string postDateTime,
                                 //CachePageObject (will be shared with all other postObjects on the same page)
                                 string Author
                                 )
@@ -2259,8 +2317,8 @@ namespace ConsoleApplication1
                 set { postContentValue = value; }
             }
 
-            private DateTime postDateTimeValue;
-            public DateTime postDateTime
+            private string postDateTimeValue;
+            public string postDateTime
             {
                 get { return postDateTimeValue; }
                 set { postDateTimeValue = value; }
@@ -2280,7 +2338,7 @@ namespace ConsoleApplication1
             //Uri commentUri,
             //int commentNumber,
             //string postHTMLContent,
-            //DateTime postDateTime,
+            //String postDateTime,
             //string Author
 
             // Implement this method to serialize data. The method is called  
@@ -2295,7 +2353,7 @@ namespace ConsoleApplication1
                 info.AddValue("commentUri", commentUri, typeof(Uri));
                 info.AddValue("commentNumber", commentNumber, typeof(int));
                 info.AddValue("postContent", postContent, typeof(string));
-                info.AddValue("postDateTime", postDateTime, typeof(DateTime));
+                info.AddValue("postDateTime", postDateTime, typeof(string));
                 info.AddValue("Author", Author, typeof(string));
             }
 
@@ -2310,7 +2368,7 @@ namespace ConsoleApplication1
                 commentUri = (Uri)info.GetValue("commentUri", typeof(Uri));
                 commentNumber = (int)info.GetValue("commentNumber", typeof(int));
                 postContent = (string)info.GetValue("postContent", typeof(string));
-                postDateTime = (DateTime)info.GetValue("postDateTime", typeof(DateTime));
+                postDateTime = (String)info.GetValue("postDateTime", typeof(String));
                 Author = (string)info.GetValue("Author", typeof(string));
             }
         }

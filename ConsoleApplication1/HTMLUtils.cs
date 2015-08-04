@@ -70,7 +70,8 @@ namespace HTMLUtils
             }
             else
             {
-                int tagEnd_index = sourceString.IndexOf(tagClose, tagStart_index + tagStart.Length) + tagClose.Length;
+                int tagEnd_index = sourceString.IndexOf(tagClose, tagStart_index + tagStart.Length);
+                    
                 if (tagEnd_index == -1)
                 {
                     Console.WriteLine("Found opening tag, but not closing tag! (Did you close a different tag or is the HTML malformed?");
@@ -78,7 +79,12 @@ namespace HTMLUtils
                 }
                 else
                 {
+                    tagEnd_index += tagClose.Length;
                     int tag_length = tagEnd_index - tagStart_index;
+                    if (tag_length <= 0)
+                    {
+                        Console.WriteLine("Break in here");
+                    }
                     return sourceString.Substring(tagStart_index, tag_length);
                 }
             }
@@ -201,7 +207,11 @@ namespace HTMLUtils
             {
                 uriStart = sourceString.IndexOf("\"", hrefLocation) + 1;
             }
-            else uriStart = 0;
+            else
+            {
+                uriStart = 0;
+                
+            }
 
             if ((hrefLocation != -1) && ((uriStart > hrefLocation + 10) || (uriStart == 0)))
             {
@@ -226,6 +236,10 @@ namespace HTMLUtils
             else
             {
                 //Console.WriteLine("No link tags found!"); //This was really annoying before I commented it out.
+                if (sourceString != "<td>N/A\n</td>")
+                {
+                    Console.WriteLine("No Href tag found!");
+                }
                 return null;
             }
         }
